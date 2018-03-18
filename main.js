@@ -225,7 +225,18 @@ function putln (str) {
 var toCompile = [];
 var toRun = [];
 
+var types = [];
+function newType (name) {
+  var tp = {name: name, id: types.length, compile: function () {
+    putln("// type[" + this.id + "]: " + this.name);
+  }};
+  types.push(tp);
+  toCompile.push(tp);
+  return tp;
+}
+
 function BaseModule (data) {
+  this.data = data;
   this.get = function (name) {
     return data[name];
   }
@@ -234,17 +245,43 @@ function BaseModule (data) {
 function Parsed (parsed) {
   var modcache = {};
 
+  var sourcemap = {};
+
   function get_module (n) {
     if (modcache[n]) return modcache[n];
     var mdata = parsed.modules[n-1];
-    while (mdata.type == "build") {
-      return get_module(mdata.base);
+    if (mdata.type == "build") {
+      var base = get_module(mdata.base);
+      var arg = get_module(mdata.argument);
+      var mod = base.build(arg);
+      modcache[n] = mod;
+      return mod;
     }
     if (mdata.type == "import" || mdata.type == "functor") {
       var mod = load_module(mdata.name);
       modcache[n] = mod;
       return mod;
-    } else throw new Error(mdata.type + " modules not yet supported");
+    }
+    if (mdata.type == "define") {
+      var items = {};
+      for (var i = 0; i < mdata.items.length; i++) {
+        var item = mdata.items[i];
+        items[item.name] = item;
+      }
+      var mod = {items: items};
+      mod.get = function (name) {
+        var item = items[name];
+        if (!item) return null;
+        if (item.type == "function")
+          return get_function(item.index);
+        if (item.type == "type")
+          return get_type(item.index);
+      };
+      mod.build = function () { return mod; }
+      modcache[n] = mod;
+      return mod;
+    }
+    throw new Error(mdata.type + " modules not yet supported");
   }
 
   var funcache = {};
@@ -254,16 +291,27 @@ function Parsed (parsed) {
     if (fn.type == "import") {
       var mod = get_module(fn.module);
       var f = mod.get(fn.name);
+      if (!f) throw new Error("No item " + fn.name + " found in module");
       funcache[n] = f;
       return f;
     } else if (fn.type == "code") {
-      var f = new Code(fn);
+      var f = new Code(fn, n);
       toCompile.push(f);
       funcache[n] = f;
       return f;
     } else {
       throw new Error("Unsupported function kind " + fn.type);
     }
+  }
+
+  var tpcache = {};
+  function get_type (n) {
+    if (tpcache[n]) return tpcache[n];
+    var tp = parsed.types[n];
+    var mod = get_module(tp.module);
+    var t = mod.get(tp.name);
+    tpcache[n] = t;
+    return t;
   }
 
   var cnscache = [];
@@ -291,7 +339,8 @@ function Parsed (parsed) {
     cnscache.push(cns);
   }
 
-  function Code (fn) {
+  function Code (fn, index) {
+    this.index = index;
     this.name = "fn" + toCompile.length;
     this.type = "code";
     this.ins = fn.ins;
@@ -319,7 +368,9 @@ function Parsed (parsed) {
       }
 
       for (var i = 0; i < lbls.length; i++) {
-        fn.code[lbls[i]].lbl = true;
+        if (fn.code[lbls[i]]) {
+          fn.code[lbls[i]].lbl = true;
+        }
       }
       fn.code[0].lbl = true;
 
@@ -330,14 +381,19 @@ function Parsed (parsed) {
         args += "reg_" + i;
       }
       putln("function " + this.name + "(" + args + ") {");
+      if (sourcemap[this.index]) {
+        var pos = sourcemap[this.index];
+        putln("  // function " + pos.name + ", at file " + pos.file)
+      }
 
       var decl = "  var _result"
-      for (var i = 0; i < regs; i++) {
+      for (var i = fn.ins.length; i < regs; i++) {
         decl += ", reg_" + i;
       }
       putln(decl + ";");
 
-      putln("  var _lbl = 0;")
+      putln("  var _lbl = 0;");
+      putln("  while (true) {");
       putln("  switch (_lbl) {");
 
       function reg (n) { return "reg_" + n; }
@@ -347,9 +403,10 @@ function Parsed (parsed) {
         if (inst.lbl) putln("  case " + i + ":");
         var k = inst.type;
         if (k == "dup") putln("  " + reg(inst.out) + " = " + reg(inst.a) + ";");
+        if (k == "set") putln("  " + reg(inst.a) + " = " + reg(inst.b) + ";");
         if (k == "sgt") putln("  " + reg(inst.out) + " = " + cnscache[inst.a].name + ";");
         if (k == "sst") putln("  " + cnscache[inst.a].name + " = " + reg(inst.b) + ";");
-        if (k == "jmp") putln("  _lbl = " + inst.a + " = " + reg(inst.b) + ";");
+        if (k == "jmp") putln("  _lbl = " + inst.a + "; break;");
         if (k == "jif") putln("  if (" + reg(inst.b) + ") { _lbl = " + inst.a + "; break; }");
         if (k == "nif") putln("  if (!" + reg(inst.b) + ") { _lbl = " + inst.a + "; break; }");
         if (k == "call") {
@@ -368,14 +425,47 @@ function Parsed (parsed) {
             }
             putln("  _result = " + ff.name + "(" + args + ");")
             for (var j = 0; j < inst.outs.length; j++) {
-              putln("  " + reg(inst.outs[j]) + " = _result[" + j + "]");
+              putln("  " + reg(inst.outs[j]) + " = _result[" + j + "];");
             }
           }
+        }
+        if (k == "end") {
+          var args = inst.args.map(function (a) {return "reg_" + a;}).join(",");
+          putln("  return [" + args + "];");
         }
       }
 
       putln("  }");
+      //putln("  throw new Error('Function does not return');")
+      putln("  }");
       putln("}");
+    }
+  }
+
+  function nget (node, name) {
+    if (node instanceof Object) {
+      for (k in node) {
+        var x = node[k];
+        if (x instanceof Object && x[0] === name) {
+          return x;
+        }
+      }
+    }
+  }
+
+  var srcnode = nget(parsed.metadata, "source map");
+  if (srcnode) {
+    var file = nget(srcnode, "file")[1];
+    for (var i = 1; i < srcnode.length; i++) {
+      var item = srcnode[i]
+      if (item[0] == "function") {
+        var index = item[1];
+        sourcemap[index] = {
+          file: file,
+          name: nget(item, "name")[1],
+          line: nget(item, "line")[1],
+        }
+      }
     }
   }
 
@@ -383,24 +473,15 @@ function Parsed (parsed) {
   toCompile.push(st);
   toRun.push(st);
 
-  var exports = {};
-  for (var i = 0; i < parsed.modules[0].items.length; i++) {
-    var item = parsed.modules[0].items[i];
-    if (item.type == "function") {
-      exports[item.name] = item.index;
-    }
-  }
+  var mod = get_module(1);
 
-  this.get = function (name) {
-    return get_function(exports[name]);
-  }
-
-  this.compile = function () {
-    for (name in exports) {
+  /*mod.compile = function () {
+    for (name in mod.items) {
       var fn = get_function(exports[name]);
       putln("exports." + name + " = " + fn.name);
     }
-  }
+  }*/
+  return mod;
 }
 
 function macro (str, inc, outc) { return {
@@ -408,11 +489,21 @@ function macro (str, inc, outc) { return {
   ins: new Array(inc), outs: new Array(outc),
 }; }
 
+var recordcache = {};
+var arraycache = {};
+
 var modules = {
+  "cobre.core": new BaseModule({
+    "bool": newType("bool"),
+    "bin": newType("bin"),
+    "any": newType("any"),
+  }),
   "cobre.system": new BaseModule({
     "print": macro("console.log($1)", 1, 0),
+    "error": macro("_error($1)", 1, 0),
   }),
   "cobre.int": new BaseModule({
+    "int": newType("int"),
     "add": macro("($1 + $2)", 2, 1),
     "sub": macro("($1 - $2)", 2, 1),
     "mul": macro("($1 * $2)", 2, 1),
@@ -425,33 +516,86 @@ var modules = {
     "lte": macro("($1 <= $2)", 2, 1),
   }),
   "cobre.string": new BaseModule({
+    "string": newType("string"),
     "new": macro("$1", 1, 1),
     "itos": macro("String($1)", 1, 1),
     "concat": macro("($1 + $2)", 2, 1),
     "eq": macro("($1 == $2)", 2, 1),
+    "length": macro("$1.length", 1, 1),
+    "charat": macro("$1[$2]", 2, 1),
+    "codeof": macro("$1.charCodeAt(0)", 1, 1),
   }),
-  "cobre.array": new BaseModule({
-    "empty": macro("[]", 0, 1),
-    "get": macro("$1[$2]", 2, 1),
-    "len": macro("$1.length", 1, 1),
-    "push": macro("$1.push($2)", 2, 0),
-  }),
-  "cobre.record": {
-    "get": function (name) {
+  "cobre.array": {build: function (arg) {
+    var base = arg.get("0");
+    var mod = arraycache[base.id];
+    if (mod) return mod;
+    var tp = newType("array(" + base.name + ")");
+    mod = new BaseModule({
+      "": tp,
+      "empty": macro("[]", 0, 1),
+      "get": macro("$1[$2]", 2, 1),
+      "set": macro("$1[$2]=$3", 3, 0),
+      "len": macro("$1.length", 1, 1),
+      "push": macro("$1.push($2)", 2, 0),
+    });
+    arraycache[base.id] = mod;
+    return mod;
+  } },
+  "cobre.any": { build: function (arg) {
+    var base = arg.get("0");
+    var id = base.id;
+    return { "get": function (name) {
+      if (name == "new") return macro("{val: $1, tp: " + id + "}", 1, 1);
+      if (name == "test") return macro("($1.tp == " + id + ")", 1, 1);
+      if (name == "get") return macro("$1.val", 1, 1);
+    } };
+  } },
+  "cobre.record": { build: function (arg) {
+    var arr = [];
+    var names = [];
+    var i = 0;
+    while (true) {
+      var a = arg.get(String(i));
+      if (!a) break;
+      arr.push(a.id);
+      names.push(a.name);
+      i++;
+    }
+    var id = arr.join(",");
+
+    var mod = recordcache[id];
+    if (mod) return mod;
+
+    var tp = newType("record(" + names.join(",") + ")");
+
+    mod = { "get": function (name) {
       if (name == "new") {
         return {type: "code", name: "_record", ins: [], outs: [0]};
       }
       var a = name.slice(0, 3);
       var n = name.slice(3);
+      if (a == "") return tp;
       if (a == "get") return macro("$1[" + n + "]", 1, 1);
       if (a == "set") return macro("$1[" + n + "] = $2", 2, 0);
-    }
-  }
+    } };
+
+    recordcache[id] = mod;
+    return mod;
+  } },
+  "cobre.typeshell": {build: function (arg) {
+    var base = arg.get("0");
+    var tp = newType("typeshell(" + base.name + ")");
+    return new BaseModule({
+      "": tp,
+      "new": macro("$1", 1, 1),
+      "get": macro("$1", 1, 1),
+    });
+  } },
 };
 
 function readModule (filename, name) {
   var data = parse(fs.readFileSync(filename));
-  var mod = new Parsed(data);
+  var mod = Parsed(data);
   modules[name] = mod;
   return mod;
 }
@@ -460,10 +604,10 @@ function load_module (name) {
   if (modules[name] !== undefined) return modules[name];
 
   var filename = "./" + name;
-  if (fs.exists(filename)) return readModule(filename);
+  if (fs.existsSync(filename)) return readModule(filename);
 
   filename = process.env.HOME + "/.cobre/modules/" + name;
-  if (fs.exists(filename)) return readModule(filename);
+  if (fs.existsSync(filename)) return readModule(filename);
 
   throw new Error("Cannot load module " + name);
 }
@@ -525,15 +669,23 @@ if (!mode && outfile) {
     var ext = parts[parts.length-1];
     if (ext == "html") {
       mode = "html";
+    } else if (ext == "js") {
+      mode = "node";
     }
   }
 }
 if (!mode) mode = "node";
 
+if (mode == "term") {
+  modules["cobre.system"].data["print"].macro = "_print($1)";
+  putln("function _print (line) { document.getElementById('content').textContent += line + '\\n'; }");
+}
+
 var mainmodule = readModule(modname);
 var mainfn = mainmodule.get("main");
 
 putln("function _record () { return [arguments]; }");
+putln("function _error (msg) { throw new Error(msg); }");
 
 for (var i = 0; i < toCompile.length; i++) {
   var fn = toCompile[i];
@@ -548,4 +700,14 @@ for (var i = 0; i < toRun.length; i++) {
 //mainmodule.compile();
 putln(mainfn.name + "();");
 
-console.log(output);
+if (mode == "html" || mode == "term") {
+  var pre = "<!DOCTYPE html>\n" +
+    "<html>\n<head>\n  <meta charset=\"utf-8\">\n</head>\n<body>\n";
+  if (mode == "term") { pre += "<pre id=\"content\"></pre>\n"; }
+  pre += "<script type=\"text/javascript\">\n";
+  var post = "<" + "/script>\n<" + "/body>\n<" + "/html>";
+  output = pre + output + post;
+}
+
+if (outfile) fs.writeFileSync(outfile, output);
+else process.stdout.write(output);
