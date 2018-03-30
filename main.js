@@ -212,9 +212,9 @@ function Parsed (parsed, modulename) {
         if (k == "end") {
           var expr;
           switch (inst.args.length) {
-            case 0: expr = "";
-            case 1: expr = reg(inst.args[0]);
-            default: expr = inst.args.map(function (a) {return reg(a);}).join(",");
+            case 0: expr = ""; break;
+            case 1: expr = reg(inst.args[0]); break;
+            default: expr = "[" + inst.args.map(function (a) {return reg(a);}).join(", ") + "]";
           }
           putln("  return " + expr + ";");
         }
@@ -227,7 +227,7 @@ function Parsed (parsed, modulename) {
     }
 
     this.use = function (args) {
-      return this.name + "(" + args.join(", ") + ");"
+      return this.name + "(" + args.join(", ") + ")"
     }
   }
 
