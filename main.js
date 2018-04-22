@@ -2,12 +2,11 @@
 const fs = require("fs");
 
 const parse = require("./parse.js");
+const writer = require("./writer.js")();
 
-var output = "";
+const Code = require("./code.js");
 
-function putln (str) {
-  output += str + "\n";
-}
+function putln (str) { writer.write(str); }
 
 var toCompile = [];
 var toRun = [];
@@ -81,7 +80,8 @@ function Parsed (parsed, modulename) {
       f = mod.get(fn.name);
       if (!f) throw new Error("No item " + fn.name + " found in module");
     } else if (fn.type == "code") {
-      f = new Code(fn, n);
+      f = new Code(fn, get_function);
+      f.name = "fn_" + toCompile.length;
       toCompile.push(f);
     } else if (fn.type == "int") {
       f = macro(String(fn.value), 0, 1);
@@ -127,108 +127,6 @@ function Parsed (parsed, modulename) {
     var t = mod.get(tp.name);
     tpcache[n] = t;
     return t;
-  }
-
-  function Code (fn, index) {
-    this.index = index;
-    this.name = "fn" + toCompile.length;
-    this.type = "code";
-    this.ins = fn.ins;
-    this.outs = fn.outs;
-
-    this.compile = function () {
-      var lbls = [];
-      var regs = fn.ins.length;
-      for (var i = 0; i < fn.code.length; i++) {
-        var inst = fn.code[i];
-        var k = inst.type;
-        if (k == "var") regs++;
-        if (k == "dup") inst.out = regs++;
-        if (k == "jmp") lbls.push(inst.a);
-        if (k == "jif") lbls.push(inst.a);
-        if (k == "nif") lbls.push(inst.a);
-        if (k == "call") {
-          var ff = get_function(inst.index);
-          inst.outs = [];
-          for (var j = 0; j < ff.outs.length; j++) {
-            inst.outs.push(regs++);
-          }
-        }
-      }
-
-      for (var i = 0; i < lbls.length; i++) {
-        if (fn.code[lbls[i]]) {
-          fn.code[lbls[i]].lbl = true;
-        }
-      }
-      fn.code[0].lbl = true;
-
-      var args = "";
-      for (var i = 0; i < fn.ins.length; i++) {
-        if (i>0) args += ", ";
-        args += "reg_" + i;
-      }
-      putln("function " + this.name + "(" + args + ") {");
-      if (sourcemap[this.index]) {
-        var pos = sourcemap[this.index];
-        putln("  // function " + pos.name + ", at file " + pos.file)
-      }
-
-      var decl = "  var _result"
-      for (var i = fn.ins.length; i < regs; i++) {
-        decl += ", reg_" + i;
-      }
-      putln(decl + ";");
-
-      putln("  var _lbl = 0;");
-      putln("  while (true) {");
-      putln("  switch (_lbl) {");
-
-      function reg (n) { return "reg_" + n; }
-
-      for (var i = 0; i < fn.code.length; i++) {
-        var inst = fn.code[i];
-        if (inst.lbl) putln("  case " + i + ":");
-        var k = inst.type;
-        if (k == "dup") putln("  " + reg(inst.out) + " = " + reg(inst.a) + ";");
-        if (k == "set") putln("  " + reg(inst.a) + " = " + reg(inst.b) + ";");
-        if (k == "jmp") putln("  _lbl = " + inst.a + "; break;");
-        if (k == "jif") putln("  if (" + reg(inst.b) + ") { _lbl = " + inst.a + "; break; }");
-        if (k == "nif") putln("  if (!" + reg(inst.b) + ") { _lbl = " + inst.a + "; break; }");
-        if (k == "call") {
-          var ff = get_function(inst.index);
-          var args = inst.args.map(function (x) {return reg(x);});
-          var expr = ff.use(args);
-          switch (inst.outs.length) {
-            case 0: putln("  " + expr + ";"); break;
-            case 1: putln("  " + reg(inst.outs[0]) + " = " + expr + ";"); break;
-            default:
-              putln("  _result = " + expr + ";")
-              for (var j = 0; j < inst.outs.length; j++) {
-                putln("  " + reg(inst.outs[j]) + " = _result[" + j + "];");
-              }
-          }
-        }
-        if (k == "end") {
-          var expr;
-          switch (inst.args.length) {
-            case 0: expr = ""; break;
-            case 1: expr = reg(inst.args[0]); break;
-            default: expr = "[" + inst.args.map(function (a) {return reg(a);}).join(", ") + "]";
-          }
-          putln("  return " + expr + ";");
-        }
-      }
-
-      putln("  }");
-      //putln("  throw new Error('Function does not return');")
-      putln("  }");
-      putln("}");
-    }
-
-    this.use = function (args) {
-      return this.name + "(" + args.join(", ") + ")"
-    }
   }
 
   function nget (node, name) {
@@ -293,7 +191,7 @@ var modules = {
   }),
   "cobre.system": new BaseModule({
     "print": macro("console.log($1)", 1, 0),
-    "error": macro("_error($1)", 1, 0),
+    "error": macro("error($1)", 1, 0),
   }),
   "cobre.int": new BaseModule({
     "int": newType("int"),
@@ -316,7 +214,7 @@ var modules = {
     "add": macro("($1 + $2)", 2, 1),
     "eq": macro("($1 == $2)", 2, 1),
     "length": macro("$1.length", 1, 1),
-    "charat": macro("[$1[$2], $2+1]", 2, 2),
+    "charat": macro("charat($1, $2)", 2, 2),
     "newchar": macro("String.fromCharCode($1)", 1, 1),
     "codeof": macro("$1.charCodeAt(0)", 1, 1),
   }),
@@ -487,8 +385,8 @@ if (!mode && outfile) {
 if (!mode) mode = "node";
 
 if (mode == "term") {
-  modules["cobre.system"].data["print"].macro = "_print($1)";
-  putln("function _print (line) { document.getElementById('content').textContent += line + '\\n'; }");
+  modules["cobre.system"].data["print"].macro = "print($1)";
+  putln("function print (line) { document.getElementById('content').textContent += line + '\\n'; }");
 }
 
 if (mode == "node") {
@@ -507,17 +405,17 @@ if (mode == "node") {
   });
   putln("var argv = process.argv.slice(1);")
   putln("const fs = require('fs');");
-  putln("function readByte (f) {}");
 }
 
 var mainmodule = load_module(modname);
 var mainfn = mainmodule.get("main");
 
-putln("function _error (msg) { throw new Error(msg); }");
+putln("function error (msg) { throw new Error(msg); }");
+putln("function charat (str, i) { return [str[i], i+1]; }");
 
 for (var i = 0; i < toCompile.length; i++) {
   var fn = toCompile[i];
-  fn.compile();
+  fn.compile(writer);
 }
 
 for (var i = 0; i < toRun.length; i++) {
@@ -527,6 +425,8 @@ for (var i = 0; i < toRun.length; i++) {
 
 //mainmodule.compile();
 putln(mainfn.name + "();");
+
+var output = writer.text;
 
 if (mode == "html" || mode == "term") {
   var pre = "<!DOCTYPE html>\n" +
