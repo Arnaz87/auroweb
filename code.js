@@ -54,8 +54,8 @@ function expand (stmts) {
   //   done between where they are evaluated and where they are used. In C-like
   //   languages, function arguments are evaluated in positional order and then
   //   the function is called with those values.
-  // Because this is done before identifying control flow structures, the only
-  //   statements with expressions are assignemnts and function calls.
+  // This is done before identifying control flow structures, so the statements
+  //   with expressions are assignemnts, function calls and branches.
   // Removed statements are also processed because they contain previously
   //   propagated expressions and can be expanded further
   // While processing statements, no expressions have been propagated, so all
@@ -104,6 +104,10 @@ function expand (stmts) {
         var prev = stmts[i-k];
         if (tryPropagate(prev, arg)) k++
       }
+    } else if (stmt.isBranch && stmt.cond) {
+      var prev = stmts[i-1];
+      var reg = stmt.cond;
+      tryPropagate(prev, reg);
     }
   }
 
@@ -120,6 +124,8 @@ function expand (stmts) {
         stmt.args[j] = getExpanded(stmt.args[j]);
       }
       if (stmt.outs === "inline") continue;
+    } else if (stmt.isBranch && stmt.cond) {
+      stmt.cond = getExpanded(stmt.cond);
     }
     stmts.push(stmt);
   }
@@ -233,14 +239,20 @@ Code.prototype.compile = function (writer) {
   var args = [], regs = [];
   for (var i = 0; i < this.ins.length; i++)
     args.push(this.regs[i].use());
-  for (var i = this.ins.length; i < this.regs.length; i++)
-    regs.push(this.regs[i].use());
+  for (var i = this.ins.length; i < this.regs.length; i++) {
+    var reg = this.regs[i];
+    if (reg && reg.uses > 0 && reg.sets > 0) {
+      regs.push(reg.use());
+    }
+  }
 
 
   writer.write("function ", this.name, " (" + args.join(", ") + ") {");
   writer.indent();
 
-  writer.write("var " + regs.join(", ") + ";");
+  if (regs.length > 0) {
+    writer.write("var " + regs.join(", ") + ";");
+  }
   writer.write("var _lbl = 0;");
   writer.write("while (true) {");
   writer.indent();
