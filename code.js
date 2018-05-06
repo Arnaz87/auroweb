@@ -1,54 +1,76 @@
 
-function Code (fn, getfn) {
-  this._fn = fn;
-  this._getfn = getfn;
-
-  this.ins = fn.ins;
-  this.outs = fn.outs;
-}
+//=== Nodes ===//
 
 function Assign (reg, expr) {
   this.reg = reg;
   this.expr = expr;
+
+  this.use = function () { return this.reg.use() + " = " + this.expr.use() }
 }
-Assign.prototype.use = function () { return this.reg.use() + " = " + this.expr.use() }
+
 function Call (fn, args, outs) {
   this.fn = fn;
   this.args = args;
   this.outs = outs;
-}
-Call.prototype.use = function () {
-  var args = this.args.map(function (arg) {return arg.use()});
-  var left = "", right = "";
-  if (this.outs != "inline") {
-    if (this.outs.length > 1) {
-      left = "var _r = ";
-      for (var i = 0; i < this.outs.length; i++) {
-        right += "; " + this.outs[i].use() + " = _r[" + i + "]";
+
+  this.use = function () {
+    var args = this.args.map(function (arg) {return arg.use()});
+    var left = "", right = "";
+    if (this.outs != "inline") {
+      if (this.outs.length > 1) {
+        left = "var _r = ";
+        for (var i = 0; i < this.outs.length; i++) {
+          right += "; " + this.outs[i].use() + " = _r[" + i + "]";
+        }
+      } else if (this.outs.length == 1) {
+        left = this.outs[0].use() + " = ";
       }
-    } else if (this.outs.length == 1) {
-      left = this.outs[0].use() + " = ";
     }
+    return left + this.fn.use(args) + right;
   }
-  return left + this.fn.use(args) + right;
-}
-function Return (args) {
-  this.args = args;
-}
-Return.prototype.use = function () {
-  if (this.args.length == 0) return "return";
-  if (this.args.length == 1) return "return " + this.args[0].use();
-  return "return [" + this.args.map(function (arg) {return arg.use()}).join(", ") + "]";
 }
 
-function Label (id) { this.label = id; }
-Label.prototype.use = function () { return "case " + this.label + ":" }
+function Return (args) {
+  this.args = args;
+
+  this.use = function () {
+    if (this.args.length == 0) return "return";
+    if (this.args.length == 1) return "return " + this.args[0].use();
+    return "return [" + this.args.map(function (arg) {return arg.use()}).join(", ") + "]";
+  }
+}
+
+function Label (id) {
+  this.label = id;
+  this.use = function () { return "case " + this.label + ":" }
+}
+
+
+
+//=== Transformations ===//
+
+function insertLabels (old, lbls) {
+  var out = [];
+
+  var insert = true;
+  for (var i = 0; i < old.length; i++) {
+    var stmt = old[i];
+    if (insert || lbls.indexOf(i) >= 0) {
+      out.push(new Label(i));
+      insert = false;
+    }
+    if (!stmt.nop) out.push(stmt);
+    if (stmt.isBranch) insert = true;
+  }
+
+  return out;
+}
 
 function expand (stmts) {
   // A register is propagated when the assignment that sets its value can be
   //   removed and the expression is moved directly where it is used.
-  // An expression is expanded when any of the values it uses is a register
-  //   and it is propagated.
+  // An expression is said to be expanded when any of the values it uses
+  //   is a register and it has been propagated.
   // Registers can only be propagated when doing so does not modify the order
   //   of execution of the expressions in the code, that is, when nothing is
   //   done between where they are evaluated and where they are used. In C-like
@@ -57,7 +79,7 @@ function expand (stmts) {
   // This is done before identifying control flow structures, so the statements
   //   with expressions are assignemnts, function calls and branches.
   // Removed statements are also processed because they contain previously
-  //   propagated expressions and can be expanded further
+  //   propagated expressions and can be expanded further.
   // While processing statements, no expressions have been propagated, so all
   //   expressions are registers.
   // If a register is only used once and its assignment is known to be right
@@ -132,21 +154,16 @@ function expand (stmts) {
   return stmts;
 }
 
-function insertLabels (old, lbls) {
-  var out = [];
 
-  var insert = true;
-  for (var i = 0; i < old.length; i++) {
-    var stmt = old[i];
-    if (insert || lbls.indexOf(i) >= 0) {
-      out.push(new Label(i));
-      insert = false;
-    }
-    if (!stmt.nop) out.push(stmt);
-    if (stmt.isBranch) insert = true;
-  }
 
-  return out;
+//=== Main Interface ===//
+
+function Code (fn, getfn) {
+  this._fn = fn;
+  this._getfn = getfn;
+
+  this.ins = fn.ins;
+  this.outs = fn.outs;
 }
 
 Code.prototype.build = function () {

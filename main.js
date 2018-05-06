@@ -3,7 +3,6 @@ const fs = require("fs");
 
 const parse = require("./parse.js");
 const writer = require("./writer.js")();
-
 const Code = require("./code.js");
 
 function putln (str) { writer.write(str); }
