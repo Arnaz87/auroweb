@@ -182,17 +182,20 @@ function macro (str, inc, outc) { return {
 var recordcache = {};
 var arraycache = {};
 
+var anyModule = new BaseModule({ "any": newType("any") })
+
 var modules = {
-  "cobre.core": new BaseModule({
+  "cobre\x1fbool": new BaseModule({
     "bool": newType("bool"),
-    "bin": newType("bin"),
-    "any": newType("any"),
+    "true": macro("true", 0, 1),
+    "false": macro("false", 0, 1),
+    "not": macro("!$1", 1, 1),
   }),
-  "cobre.system": new BaseModule({
-    "print": macro("console.log($1)", 1, 0),
+  "cobre\x1fsystem": new BaseModule({
+    "println": macro("console.log($1)", 1, 0),
     "error": macro("error($1)", 1, 0),
   }),
-  "cobre.int": new BaseModule({
+  "cobre\x1fint": new BaseModule({
     "int": newType("int"),
     "add": macro("($1 + $2)", 2, 1),
     "sub": macro("($1 - $2)", 2, 1),
@@ -202,10 +205,10 @@ var modules = {
     "ne": macro("($1 != $2)", 2, 1),
     "gt": macro("($1 > $2)", 2, 1),
     "lt": macro("($1 < $2)", 2, 1),
-    "gte": macro("($1 >= $2)", 2, 1),
-    "lte": macro("($1 <= $2)", 2, 1),
+    "ge": macro("($1 >= $2)", 2, 1),
+    "le": macro("($1 <= $2)", 2, 1),
   }),
-  "cobre.string": new BaseModule({
+  "cobre\x1fstring": new BaseModule({
     "string": newType("string"),
     "new": macro("$1", 1, 1),
     "itos": macro("String($1)", 1, 1),
@@ -217,7 +220,7 @@ var modules = {
     "newchar": macro("String.fromCharCode($1)", 1, 1),
     "codeof": macro("$1.charCodeAt(0)", 1, 1),
   }),
-  "cobre.array": {build: function (arg) {
+  "cobre\x1farray": {build: function (arg) {
     var base = arg.get("0");
     var mod = arraycache[base.id];
     if (mod) return mod;
@@ -234,8 +237,9 @@ var modules = {
     arraycache[base.id] = mod;
     return mod;
   } },
-  "cobre.any": { build: function (arg) {
+  "cobre\x1fany": { build: function (arg) {
     var base = arg.get("0");
+    if (!base) return anyModule;
     var id = base.id;
     return { "get": function (name) {
       if (name == "new") return macro("{val: $1, tp: " + id + "}", 1, 1);
@@ -243,7 +247,7 @@ var modules = {
       if (name == "get") return macro("$1.val", 1, 1);
     } };
   } },
-  "cobre.null": { build: function (arg) {
+  "cobre\x1fnull": { build: function (arg) {
     var base = arg.get("0");
     var tp = newType("null(" + base.name + ")");
     return new BaseModule({
@@ -254,7 +258,7 @@ var modules = {
       "isnull": macro("($1 === null)", 1, 1),
     });
   } },
-  "cobre.record": { build: function (arg) {
+  "cobre\x1frecord": { build: function (arg) {
     var arr = [];
     var names = [];
     var i = 0;
@@ -288,7 +292,7 @@ var modules = {
     recordcache[id] = mod;
     return mod;
   } },
-  "cobre.typeshell": {build: function (arg) {
+  "cobre\x1ftypeshell": {build: function (arg) {
     // Each time it's called, a new type is created
     return new BaseModule({
       "": newType("typeshell"),
@@ -298,7 +302,7 @@ var modules = {
   } },
 };
 
-modules["cobre.string"].data["new"].pure = true;
+modules["cobre\x1fstring"].data["new"].pure = true;
 
 function readModule (filename, name) {
   var data = parse(fs.readFileSync(filename));
@@ -308,15 +312,16 @@ function readModule (filename, name) {
 }
 
 function load_module (name) {
-  if (modules[name] !== undefined) return modules[name];
+  if (modules[name] !== undefined) return modules[name]
 
-  var filename = "./" + name;
-  if (fs.existsSync(filename)) return readModule(filename, name);
+  var escaped = name.replace(/\x1f/g, ".")
+  var filename = "./" + escaped
+  if (fs.existsSync(filename)) return readModule(filename, name)
 
-  filename = process.env.HOME + "/.cobre/modules/" + name;
-  if (fs.existsSync(filename)) return readModule(filename, name);
+  filename = process.env.HOME + "/.cobre/modules/" + escaped
+  if (fs.existsSync(filename)) return readModule(filename, name)
 
-  throw new Error("Cannot load module " + name);
+  throw new Error("Cannot load module " + name)
 }
 
 function usage () {
@@ -384,20 +389,20 @@ if (!mode && outfile) {
 if (!mode) mode = "node";
 
 if (mode == "term") {
-  modules["cobre.system"].data["print"].macro = "print($1)";
-  putln("function print (line) { document.getElementById('content').textContent += line + '\\n'; }");
+  modules["cobre\x1fsystem"].data["println"].macro = "println($1)";
+  putln("function println (line) { document.getElementById('content').textContent += line + '\\n'; }");
 }
 
 if (mode == "node") {
-  var orig = modules["cobre.system"].data;
-  modules["cobre.system"] = new BaseModule({
-    print: orig.print,
+  var orig = modules["cobre\x1fsystem"].data;
+  modules["cobre\x1fsystem"] = new BaseModule({
+    println: orig.println,
     error: orig.error,
     file: newType("file"),
     readall: macro("fs.readFileSync($1, 'utf8')", 1, 1),
-    quit: macro("process.exit($1)", 1, 0),
+    exit: macro("process.exit($1)", 1, 0),
     argc: macro("argv.length", 0, 1),
-    args: macro("argv[$1]", 1, 1),
+    argv: macro("argv[$1]", 1, 1),
     open: macro("fs.openSync($1, $2)", 2, 1),
     write: macro("fs.writeSync($1, $2)", 2, 0),
     writebyte: macro("fs.writeSync($1, Buffer.from([$2]))", 2, 0),

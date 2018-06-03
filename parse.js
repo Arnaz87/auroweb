@@ -3,7 +3,7 @@ module.exports = function parse (buffer) {
 buffer = new Uint8Array(buffer);
 var pos = 0;
 
-function fail (msg) { throw new Error(msg + ". at byte " + pos); }
+function fail (msg) { console.log(msg + ". at byte " + pos.toString(16)); process.exit(1); }
 function unsupported (msg) { fail("Unsupported " + msg); }
 
 function readByte () {
@@ -48,16 +48,17 @@ while (true) {
   if (byte == 0) break;
   magic += String.fromCharCode(byte);
 }
-if (magic !== "Cobre 0.5") fail("Not a \"Cobre 0.5\" module.");
+if (magic !== "Cobre 0.6") fail("Not a Cobre 0.6 module");
 
 var modules = parseN(readInt(), function () {
   var k = readInt();
   switch (k) {
-    case 0: return {
+    case 0: fail("Unknown import");
+    case 1: return {
       type: "import",
       name: readStr(),
     };
-    case 1: return {
+    case 2: return {
       type: "define",
       items: parseN(readInt(), function () {
         var types = ["module", "type", "function", "const"];
@@ -69,10 +70,6 @@ var modules = parseN(readInt(), function () {
           name: readStr(),
         }
       })
-    };
-    case 2: return {
-      type: "functor",
-      name: readStr(),
     };
     case 3: return {
       type: "use",
@@ -127,7 +124,7 @@ for (var i = 0; i < constCount; i++) {
     var len = readInt();
     var arr = [];
     for (var j = 0; j < len; j++)
-      arr.push(readInt());
+      arr.push(readByte());
     f = {
       type: "bin",
       data: arr,
