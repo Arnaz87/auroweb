@@ -51,7 +51,7 @@ function Return (args) {
 
 function Label (id) {
   this.label = id;
-  this.use = function () { return "// " + this.label + ":" }
+  this.use = function () { return "// label " + this.label }
 }
 
 
@@ -186,11 +186,15 @@ function makeLoops (stmts) {
     }
   }
 
-  function Loop (body, cond, neg, start, end) {
+  function Loop (body, cond, neg, end) {
 
     // The first statement is the loop label, create inner loops without
     // it because an inner loop to the start of this loop is a continue
     var first = body.shift()
+
+    var start = first.label
+    var start2 = body[body.length-1].label
+
     body = makeLoops(body)
     body.unshift(first)
 
@@ -198,8 +202,12 @@ function makeLoops (stmts) {
     // end up inside those loops
     for (var i = 0; i < body.length; i++) {
       var stmt = body[i];
-      if (stmt.lbl == start) body[i] = new Continue(stmt.cond, stmt.neg);
-      if (stmt.lbl == end) body[i] = new Break(stmt.cond, stmt.neg);
+      if (stmt.lbl) {
+        if (stmt.lbl === start || stmt.lbl === start2)
+          body[i] = new Continue(stmt.cond, stmt.neg);
+        if (stmt.lbl === end)
+          body[i] = new Break(stmt.cond, stmt.neg);
+      }
     }
 
     this.body = body
@@ -207,12 +215,12 @@ function makeLoops (stmts) {
     this.use = function () { return "/* While Loop */" }
 
     this.write = function (writer) {
-      cond = cond ? (neg?"!":"") + cond.use() : "true"
-      writer.write("while (", cond, ") {")
+      var cnd = cond ? (neg?"!":"") + cond.use() : "true"
+      writer.write("do {");
       writer.indent();
-      writeNodes(writer, body);
+      writeNodes(writer, this.body);
       writer.dedent();
-      writer.write("}");
+      writer.write("} while (", cnd, ");")
     }
   }
 
@@ -243,11 +251,10 @@ function makeLoops (stmts) {
       var before = stmts.slice(0, dest+1) // include the label
       var after = stmts.slice(last+1, stmts.length) // exclude the branch
 
-      var inner = stmts.slice(dest, last) // exclude the label and exclude the branch
+      var inner = stmts.slice(dest, last) // include the label and exclude the branch
 
-      var start = stmts[dest].label
       var end = stmts[last+1].label
-      before.push(new Loop(inner, stmt.cond, stmt.neg, start, end));
+      before.push(new Loop(inner, stmt.cond, stmt.neg, end));
 
       stmts = before.concat(after);
       // Then try to find other loops
@@ -291,7 +298,7 @@ function makeIfs (stmts) {
       if (end !== null) {
         var inner = stmts.slice(i+1, end+1) // Exclude the branch, include the label
         next.push(new If(inner, stmt.cond, !stmt.neg));
-        i = end;
+        i = end-1; // Jump to the instruction before the label, the for will advance to the label
         continue;
       }
     }

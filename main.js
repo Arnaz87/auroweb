@@ -398,17 +398,29 @@ if (mode == "node") {
   modules["cobre\x1fsystem"] = new BaseModule({
     println: orig.println,
     error: orig.error,
-    file: newType("file"),
-    readall: macro("fs.readFileSync($1, 'utf8')", 1, 1),
     exit: macro("process.exit($1)", 1, 0),
     argc: macro("argv.length", 0, 1),
     argv: macro("argv[$1]", 1, 1),
-    open: macro("fs.openSync($1, $2)", 2, 1),
-    write: macro("fs.writeSync($1, $2)", 2, 0),
-    writebyte: macro("fs.writeSync($1, Buffer.from([$2]))", 2, 0),
+  });
+  modules["cobre\x1fio"] = new BaseModule({
+    file: newType("file"),
+    mode: newType("mode"),
+    r: macro("'r'", 0, 1),
+    w: macro("'w'", 0, 1),
+    a: macro("'a'", 0, 1),
+    open: macro("fs_open($1, $2)", 2, 1),
+    close: macro("fs_close($1)", 1, 0),
+    read: macro("fs_read($1, $2)", 2, 1),
+    write: macro("fs_write($1, $2)", 2, 0),
+    eof: macro("fs_eof($1)", 1, 1),
   });
   putln("var argv = process.argv.slice(1);")
   putln("const fs = require('fs');");
+  putln("function fs_open (path, mode) { return {f: fs.openSync(path, mode), size: fs.statSync(path).size, pos: 0} }")
+  putln("function fs_close (file) { fs.closeSync(file.f) }")
+  putln("function fs_read (file, size) { var buf = Buffer.alloc(size); var redd = fs.readSync(file.f, buf, 0, size, file.pos); file.pos += redd; return buf.slice(0, redd); }")
+  putln("function fs_write (file, buf) { var written = fs.writeSync(file, buf, 0, buf.length, file.pos); file.pos += written; }")
+  putln("function fs_eof (file) { return file.pos >= file.size }")
 }
 
 var mainmodule = load_module(modname);
