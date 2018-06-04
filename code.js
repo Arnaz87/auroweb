@@ -1,4 +1,13 @@
 
+function writeNodes (writer, nodes) {
+  for (var i = 0; i < nodes.length; i++) {
+    var stmt = nodes[i];
+    if (stmt.write) stmt.write(writer);
+    else if (stmt.use) writer.write(nodes[i].use() + ";");
+    else writer.write("// ", JSON.stringify(nodes[i]));
+  }
+}
+
 //=== Nodes ===//
 
 function Assign (reg, expr) {
@@ -42,7 +51,7 @@ function Return (args) {
 
 function Label (id) {
   this.label = id;
-  this.use = function () { return "case " + this.label + ":" }
+  this.use = function () { return "// " + this.label + ":" }
 }
 
 
@@ -60,7 +69,10 @@ function insertLabels (old, lbls) {
       insert = false;
     }
     if (!stmt.nop) out.push(stmt);
-    if (stmt.isBranch) insert = true;
+    if (stmt.isBranch) {
+      insert = true;
+      stmt.index = i;
+    }
   }
 
   return out;
@@ -154,6 +166,141 @@ function expand (stmts) {
   return stmts;
 }
 
+function makeLoops (stmts) {
+
+  function Break (cond, neg) {
+    this.use = function () {
+      if (cond) {
+        cond = (neg?"!":"") + cond.use()
+        return "if (" + cond + ") break;"
+      } else return "break"
+    }
+  }
+
+  function Continue (cond, neg) {
+    this.use = function () {
+      if (cond) {
+        cond = (neg?"!":"") + cond.use()
+        return "if (" + cond + ") continue;"
+      } else return "continue"
+    }
+  }
+
+  function Loop (body, cond, neg, start, end) {
+
+    // The first statement is the loop label, create inner loops without
+    // it because an inner loop to the start of this loop is a continue
+    var first = body.shift()
+    body = makeLoops(body)
+    body.unshift(first)
+
+    // Create breaks and continues after making loops, otherwise they could
+    // end up inside those loops
+    for (var i = 0; i < body.length; i++) {
+      var stmt = body[i];
+      if (stmt.lbl == start) body[i] = new Continue(stmt.cond, stmt.neg);
+      if (stmt.lbl == end) body[i] = new Break(stmt.cond, stmt.neg);
+    }
+
+    this.body = body
+
+    this.use = function () { return "/* While Loop */" }
+
+    this.write = function (writer) {
+      cond = cond ? (neg?"!":"") + cond.use() : "true"
+      writer.write("while (", cond, ") {")
+      writer.indent();
+      writeNodes(writer, body);
+      writer.dedent();
+      writer.write("}");
+    }
+  }
+
+  while (true) {
+    var lbls = {}, last = null;
+
+    // We need to find the last branch going backwards because, if it goes
+    // backwards it's a loop, and if it's the last it's most likely the
+    // biggest, because interwined loops are rare.
+
+    for (var i = 0; i < stmts.length; i++) {
+      var stmt = stmts[i]
+
+      // Register all present labels, because with the loop creation, some
+      // branches may end up in different code blocks than their matching label
+      // It's okay to not see labels in advance, as we only care for backwards branches
+      if (stmt.label) lbls[stmt.label] = i
+
+      if (stmt.isBranch && stmt.index >= stmt.lbl && lbls[stmt.lbl] !== undefined)
+        last = i
+    }
+
+    // If any loop was found
+    if (last !== null) {
+      var stmt = stmts[last]
+      var dest = lbls[stmt.lbl]
+
+      var before = stmts.slice(0, dest+1) // include the label
+      var after = stmts.slice(last+1, stmts.length) // exclude the branch
+
+      var inner = stmts.slice(dest, last) // exclude the label and exclude the branch
+
+      var start = stmts[dest].label
+      var end = stmts[last+1].label
+      before.push(new Loop(inner, stmt.cond, stmt.neg, start, end));
+
+      stmts = before.concat(after);
+      // Then try to find other loops
+    } else return stmts // If no loop was found, terminate
+  }
+}
+
+function makeIfs (stmts) {
+  function If (body, cond, neg) {
+    body = makeIfs(body);
+    this.body = body;
+
+    this.use = function () { return "/* If */" }
+
+    this.write = function (writer) {
+      cond = cond ? (neg?"!":"") + cond.use() : "true"
+      writer.write("if (", cond, ") {")
+      writer.indent();
+      writeNodes(writer, body);
+      writer.dedent();
+      writer.write("}");
+    }
+  }
+
+  var next = [];
+
+  for (var i = 0; i < stmts.length; i++) {
+    var stmt = stmts[i]
+
+    if (stmt.isBranch && stmt.index < stmt.lbl) {
+      // Try to find the label forward, if not found is inside a block or
+      // outside this block
+      var end = null
+      for (var j = i+1; j < stmts.length; j++) {
+        var candidate = stmts[j]
+        if (candidate.label == stmt.lbl) {
+          end = j; break
+        }
+      }
+      // The label was found
+      if (end !== null) {
+        var inner = stmts.slice(i+1, end+1) // Exclude the branch, include the label
+        next.push(new If(inner, stmt.cond, !stmt.neg));
+        i = end;
+        continue;
+      }
+    }
+    if (stmt.body) stmt.body = makeIfs(stmt.body);
+    next.push(stmt);
+  }
+
+  return next;
+}
 
 
 //=== Main Interface ===//
@@ -204,9 +351,9 @@ Code.prototype.build = function () {
     if (this.cond) {
       var cond = this.cond.use();
       if (this.neg) cond = "!" + cond;
-      return "if (" + cond + ") {_lbl = " + this.lbl + "; break}";
+      return "if (" + cond + ") { goto(" + this.lbl + "); }";
     }
-    return "_lbl = " + this.lbl + "; break";
+    return "goto(" + this.lbl + ")";
   }
 
   for (var i = 0; i < fn.ins.length; i++) { Reg(regc++, true) }
@@ -245,6 +392,8 @@ Code.prototype.build = function () {
 
   stmts = insertLabels(stmts, lbls);
   stmts = expand(stmts);
+  stmts = makeLoops(stmts);
+  stmts = makeIfs(stmts);
 
   this.ast = stmts;
   this.regs = regs;
@@ -263,28 +412,13 @@ Code.prototype.compile = function (writer) {
     }
   }
 
-
   writer.write("function ", this.name, " (" + args.join(", ") + ") {");
   writer.indent();
 
   if (regs.length > 0) {
     writer.write("var " + regs.join(", ") + ";");
   }
-  writer.write("var _lbl = 0;");
-  writer.write("while (true) {");
-  writer.indent();
-  writer.write("switch (_lbl) {");
-  writer.indent();
-
-  for (var i = 0; i < this.ast.length; i++) {
-    writer.write(this.ast[i].use() + ";");
-    //writer.write("//", JSON.stringify(this.ast[i]));
-  }
-  writer.dedent();
-  writer.write("}");
-  writer.dedent();
-  writer.write("}");
-
+  writeNodes(writer, this.ast);
   writer.dedent();
   writer.write("}");
 }

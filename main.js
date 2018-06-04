@@ -414,6 +414,7 @@ if (mode == "node") {
 var mainmodule = load_module(modname);
 var mainfn = mainmodule.get("main");
 
+putln("function goto (lbl) { throw new Error('goto ' + lbl); }")
 putln("function error (msg) { throw new Error(msg); }");
 putln("function charat (str, i) { return [str[i], i+1]; }");
 
