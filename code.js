@@ -8,6 +8,12 @@ function writeNodes (writer, nodes) {
   }
 }
 
+// Structured code generation:
+// Stupid papers do not include dates god dammit
+// "Taming Control Flow: A Structured Approach to Eliminating Goto Statements"
+//    Ana M. Erosa and Laurie J. Hendren
+
+
 //=== Nodes ===//
 
 function Assign (reg, expr) {
@@ -53,6 +59,24 @@ function Label (id) {
   this.label = id;
   this.use = function () { return "// label " + this.label }
 }
+
+function Not (expr) {
+  if (expr.isNot) return expr.expr
+  if (expr == True) return False
+  if (expr == False) return True
+  return {
+    expr: expr,
+    isNot: true,
+    use: function () { return "!" + this.expr.use() }
+  }
+}
+
+function Or (a, b) {
+  this.use = function () { return "(" + a.use() + " || " + b.use() + ")" }
+}
+
+var True  = {use: function () { return "true" }}
+var False = {use: function () { return "false" }}
 
 
 
@@ -166,147 +190,269 @@ function expand (stmts) {
   return stmts;
 }
 
-function makeLoops (stmts) {
-
-  function Break (cond, neg) {
-    this.use = function () {
-      if (cond) {
-        cond = (neg?"!":"") + cond.use()
-        return "if (" + cond + ") break;"
-      } else return "break"
-    }
-  }
-
-  function Continue (cond, neg) {
-    this.use = function () {
-      if (cond) {
-        cond = (neg?"!":"") + cond.use()
-        return "if (" + cond + ") continue;"
-      } else return "continue"
-    }
-  }
-
-  function Loop (body, cond, neg, end) {
-
-    // The first statement is the loop label, create inner loops without
-    // it because an inner loop to the start of this loop is a continue
-    var first = body.shift()
-
-    var start = first.label
-    var start2 = body[body.length-1].label
-
-    body = makeLoops(body)
-    body.unshift(first)
-
-    // Create breaks and continues after making loops, otherwise they could
-    // end up inside those loops
-    for (var i = 0; i < body.length; i++) {
-      var stmt = body[i];
-      if (stmt.lbl) {
-        if (stmt.lbl === start || stmt.lbl === start2)
-          body[i] = new Continue(stmt.cond, stmt.neg);
-        if (stmt.lbl === end)
-          body[i] = new Break(stmt.cond, stmt.neg);
+function regularizeBranches (stmts) {
+  for (var i = 0; i < stmts.length; i++) {
+    var stmt = stmts[i]
+    if (stmt.isBranch) {
+      if (!stmt.cond) {
+        stmt.cond = True
+      } else if (stmt.neg) {
+        stmt.cond = Not(stmt.cond)
+        stmt.neg = false
       }
     }
-
-    this.body = body
-
-    this.use = function () { return "/* While Loop */" }
-
-    this.write = function (writer) {
-      var cnd = cond ? (neg?"!":"") + cond.use() : "true"
-      writer.write("do {");
-      writer.indent();
-      writeNodes(writer, this.body);
-      writer.dedent();
-      writer.write("} while (", cnd, ");")
-    }
-  }
-
-  while (true) {
-    var lbls = {}, last = null;
-
-    // We need to find the last branch going backwards because, if it goes
-    // backwards it's a loop, and if it's the last it's most likely the
-    // biggest, because interwined loops are rare.
-
-    for (var i = 0; i < stmts.length; i++) {
-      var stmt = stmts[i]
-
-      // Register all present labels, because with the loop creation, some
-      // branches may end up in different code blocks than their matching label
-      // It's okay to not see labels in advance, as we only care for backwards branches
-      if (stmt.label) lbls[stmt.label] = i
-
-      if (stmt.isBranch && stmt.index >= stmt.lbl && lbls[stmt.lbl] !== undefined)
-        last = i
-    }
-
-    // If any loop was found
-    if (last !== null) {
-      var stmt = stmts[last]
-      var dest = lbls[stmt.lbl]
-
-      var before = stmts.slice(0, dest+1) // include the label
-      var after = stmts.slice(last+1, stmts.length) // exclude the branch
-
-      var inner = stmts.slice(dest, last) // include the label and exclude the branch
-
-      var end = stmts[last+1].label
-      before.push(new Loop(inner, stmt.cond, stmt.neg, end));
-
-      stmts = before.concat(after);
-      // Then try to find other loops
-    } else return stmts // If no loop was found, terminate
   }
 }
 
-function makeIfs (stmts) {
-  function If (body, cond, neg) {
-    body = makeIfs(body);
-    this.body = body;
+function removeGotos (stmts) {
 
-    this.use = function () { return "/* If */" }
+  var gotos = []
+  var labels = {}
+  var usedLabels = {}
 
+  function getLabelReg (lbl) {
+    var r = usedLabels[lbl]
+    if (!r) {
+      r = {use: function () {return "goto_" + lbl}}
+      usedLabels[lbl] = r
+    }
+    return  r
+  }
+
+  function Block (stmts, parent) {
+    this.stmts = stmts
+
+    this.lineage = [this]
+    this.level = 0
+    this.setParent = function (parent) {
+      this.parent = parent
+      this.lineage = parent.lineage.slice(0)
+      this.lineage.push(this)
+      this.level = this.lineage.length
+      for (var i = 0; i < this.stmts.length; i++) {
+        if (stmt.body !== undefined) stmt.body.setParent(this)
+      }
+    }
+    if (parent) this.setParent(parent)
+
+    this.calculateOffsets = function () {
+      for (var i = 0; i < this.stmts.length; i++) {
+        var stmt = this.stmts[i]
+        if (stmt.isBranch || stmt.label !== undefined) {
+          stmt.offset = i
+          stmt.block = this
+        }
+        if (stmt.body !== undefined) {
+          stmt.body.offset = i
+          stmt.body.setParent(this)
+        }
+      }
+    }
+
+    this.slice = function (start, end) { return this.stmts.slice(start, end) }
+
+    this.replace = function (start, end, item) {
+      this.stmts.splice(start, end-start, item)
+      this.calculateOffsets()
+    }
+
+    this.insert = function (pos, item) {
+      this.stmts.splice(pos, 0, item)
+      this.calculateOffsets()
+    }
+
+    this.direct = function (other) {
+      var min = Math.min(this.level, other.level)
+      for (var i = 0; i < min; i++) {
+        if (this.lineage[i] != other.lineage[i]) return false
+      }
+      return true
+    }
+
+    this.calculateOffsets()
+  }
+
+  function Break (cond, target) {
+    this.cond = cond
+    this.target = target
+    this.use = function () { return "if (" + this.cond.use() + ") break " + this.target.name }
+  }
+
+  function Continue (cond, target) {
+    this.cond = cond
+    this.target = target
+    this.use = function () { return "if (" + this.cond.use() + ") continue " + this.target.name }
+  }
+
+  function If (body, cond) {
+    this.isIf = true
+    this.body = body
+    this.cond = Not(cond)
+    body.container = this
     this.write = function (writer) {
-      cond = cond ? (neg?"!":"") + cond.use() : "true"
+      var cond = this.cond ? this.cond.use() : "true"
       writer.write("if (", cond, ") {")
       writer.indent();
-      writeNodes(writer, body);
+      writeNodes(writer, this.body.stmts);
       writer.dedent();
       writer.write("}");
     }
   }
 
-  var next = [];
+  var loopcount = 1
+  function Loop (body, cond, startlbl, breaklbl) {
+    this.isLoop = true
+    this.body = body
+    body.container = this
+    this.name = "loop_" + (loopcount++)
+
+    var stmts = body.stmts
+
+    for (var i = 0; i < stmts.length; i++) {
+      var stmt = stmts[i]
+      if (stmt.isBranch && stmt.lbl === breaklbl) {
+        stmts[i] = new Break(stmt.cond, this)
+        gotos.splice(gotos.indexOf(stmt), 1)
+      }
+      if (stmt.isBranch && stmt.lbl === startlbl) {
+        stmts[i] = new Continue(stmt.cond, this)
+        gotos.splice(gotos.indexOf(stmt), 1)
+      }
+    }
+
+    if (cond != True) stmts.push(new Break(Not(cond), this))
+
+    this.cond = True
+    if (stmts[0] instanceof Break && stmts[0].target == this) {
+      this.cond = Not(stmts.shift().cond)
+    }
+
+    body.calculateOffsets()
+
+    this.write = function (writer) {
+      writer.write(this.name + ": while (", this.cond.use(), ") {");
+      writer.indent();
+      writeNodes(writer, this.body.stmts);
+      writer.dedent();
+      writer.write("}")
+    }
+  }
 
   for (var i = 0; i < stmts.length; i++) {
     var stmt = stmts[i]
-
-    if (stmt.isBranch && stmt.index < stmt.lbl) {
-      // Try to find the label forward, if not found is inside a block or
-      // outside this block
-      var end = null
-      for (var j = i+1; j < stmts.length; j++) {
-        var candidate = stmts[j]
-        if (candidate.label == stmt.lbl) {
-          end = j; break
-        }
-      }
-      // The label was found
-      if (end !== null) {
-        var inner = stmts.slice(i+1, end+1) // Exclude the branch, include the label
-        next.push(new If(inner, stmt.cond, !stmt.neg));
-        i = end-1; // Jump to the instruction before the label, the for will advance to the label
-        continue;
-      }
+    if (stmt.isBranch) {
+      gotos.push(stmt)
+    } else if (stmt.label) {
+      labels[stmt.label] = stmt
     }
-    if (stmt.body) stmt.body = makeIfs(stmt.body);
-    next.push(stmt);
   }
 
-  return next;
+  var topBlock = new Block(stmts)
+
+  mainloop:
+  while (gotos.length > 0) {
+    var stmt = gotos.pop()
+    var label = labels[stmt.lbl]
+
+    var block = stmt.block
+
+    // Move outwards until direct and the goto not inmost
+    while (!block.direct(label.block) || block.level > label.block.level) {
+      var reg = getLabelReg(label.label)
+      if (block.container instanceof Loop) {
+        block.replace(stmt.offset, stmt.offset+1, new Break(reg, block.container))
+      } else {
+        var inner = block.slice(stmt.offset+1, block.stmts.length)
+        var body = new Block(inner, block)
+        var ifstmt = new If(body, reg)
+        block.replace(stmt.offset, block.stmts.length, ifstmt)
+      }
+      block.insert(stmt.offset, new Assign(reg, stmt.cond))
+      stmt.cond = reg
+      block.parent.insert(block.offset+1, stmt)
+      block = stmt.block
+    }
+
+    // Already direct, move inwards until siblings
+    while (block.level < label.block.level) {
+      var nextblock = label.block.lineage[block.level]
+      if (nextblock.offset < stmt.offset) {
+        throw new Exception("Goto Lifting not implemented")
+        continue mainloop
+      } else {
+        var reg = getLabelReg(label.label)
+        var inner = block.slice(stmt.offset+1, nextblock.offset)
+        var body = new Block(inner, block)
+        var ifstmt = new If(body, reg)
+        block.replace(stmt.offset, nextblock.offset, ifstmt)
+        block.insert(stmt.offset, new Assign(reg, stmt.cond))
+        nextblock.container.cond = new Or(reg, nextblock.container.cond)
+        nextblock.insert(0, stmt)
+        stmt.cond = reg
+        block = stmt.block
+      }
+    }
+
+    // Guaranteed to be siblings (I think...)
+    if (stmt.offset < label.offset) {
+      // The label must end up outside the if, because the gotos are
+      // processed bottom up and no inner structure will use the labels
+      // again
+      var inner = block.slice(stmt.offset+1, label.offset)
+      var body = new Block(inner, block)
+      var ifstmt = new If(body, stmt.cond)
+      block.replace(stmt.offset, label.offset, ifstmt)
+    } else {
+      // The label must end up outside the loop, because any inner goto
+      // using it must necessarily be a continue statement
+      var inner = block.slice(label.offset+1, stmt.offset)
+      var body = new Block(inner, block)
+      var breaklbl = block.stmts[stmt.offset+1].label
+      var ifstmt = new Loop(body, stmt.cond, label.label, breaklbl)
+      block.replace(label.offset+1, stmt.offset+1, ifstmt)
+    }
+    var reg = usedLabels[label.label]
+    if (reg) {
+      label.block.insert(label.offset, new Assign(reg, False))
+    }
+  }
+
+  if (Object.keys(usedLabels).length) {
+    topBlock.stmts.unshift({
+      use: function () {
+        var names = []
+        for (var key in usedLabels) {
+          names.push(usedLabels[key].use() + "=false")
+        }
+        return "var " + names.join(", ")
+      }
+    })
+  }
+
+  return topBlock.stmts
+}
+
+function cleanUp (old) {
+  var stmts = []
+  for (var i = 0; i < old.length; i++) {
+    var stmt = old[i]
+    if (stmt instanceof Label) continue
+    if (stmt.isIf) {
+      if (stmt.cond == False) continue
+      var body = cleanUp(stmt.body.stmts)
+      if (stmt.cond == True) {
+        stmts = stmts.join(body)
+        continue
+      } else {
+        stmt.body.stmts = body
+      }
+    } else if (stmt.isLoop) {
+      var body = cleanUp(stmt.body.stmts)
+      stmt.body.stmts = body
+    }
+    stmts.push(stmt)
+  }
+  return stmts
 }
 
 
@@ -397,10 +543,12 @@ Code.prototype.build = function () {
 
   regs.length = regc;
 
-  stmts = insertLabels(stmts, lbls);
-  stmts = expand(stmts);
-  stmts = makeLoops(stmts);
-  stmts = makeIfs(stmts);
+  stmts = insertLabels(stmts, lbls)
+  stmts = expand(stmts)
+  regularizeBranches(stmts)
+
+  stmts = removeGotos(stmts)
+  stmts = cleanUp(stmts)
 
   this.ast = stmts;
   this.regs = regs;
