@@ -10,6 +10,48 @@ function putln (str) { writer.write(str); }
 var toCompile = [];
 var toRun = [];
 
+var reservedNames =  [
+  // https://www.w3schools.com/js/js_reserved.asp
+  "abstract", "await", "arguments", "boolean",
+  "break", "byte", "case", "catch",
+  "char", "class", "const", "continue",
+  "debugger", "default", "delete", "do",
+  "double", "else", "enum", "eval",
+  "export", "extends", "false", "final",
+  "finally", "float", "for", "function",
+  "goto", "if", "implements", "import",
+  "in", "instanceof", "int", "interface",
+  "let", "long", "native", "new",
+  "null", "package", "private", "protected",
+  "public", "return", "short", "static",
+  "super", "switch", "synchronized", "this",
+  "throw", "throws", "transient", "true",
+  "try", "typeof", "var", "void",
+  "volatile", "while", "with", "yield",
+  // Other keywords
+  "undefined", "NaN", "Infinity",
+  // Global Objects
+  "Object", "Function", "Boolean", "Error", "Number", "Math", "String", "Array",
+  // Browser specific
+  "document", "window", "console", "body",
+  // NodeJS specific
+  "global", "require", "module", "process", "Buffer"
+];
+
+var nameSet = {}
+
+reservedNames.forEach(function (name) {nameSet[name] = true})
+
+function findName (orig) {
+  var name = orig
+  var i = 1
+  while (nameSet[name]) {
+    name = orig + "$" + i++
+  }
+  nameSet[name] = true
+  return name
+}
+
 var types = [];
 function newType (name) {
   var tp = {name: name, id: types.length, compile: function () {
@@ -80,7 +122,12 @@ function Parsed (parsed, modulename) {
       if (!f) throw new Error("No item " + fn.name + " found in module");
     } else if (fn.type == "code") {
       f = new Code(fn, get_function);
-      f.name = "fn_" + toCompile.length;
+      if (sourcemap[n] && sourcemap[n].name) {
+        f.name = findName(sourcemap[n].name)
+      } else {
+        f.name = "fn_" + toCompile.length
+      }
+      f.fnName = f.name
       toCompile.push(f);
     } else if (fn.type == "int") {
       f = macro(String(fn.value), 0, 1);
@@ -94,22 +141,32 @@ function Parsed (parsed, modulename) {
       }
       str += "\"";
       f = macro(str, 0, 1);
+      f.bytes = fn.data
     } else if (fn.type == "call") {
       var cfn = get_function(fn.index);
-      var args = fn.args.map(function (ix) {
-        return get_function(ix).use([]);
-      });
-      var expr = cfn.use(args);
-      if (cfn.pure) {
-        f = macro(expr, 0, 1);
+      if (cfn == modules["cobre\x1fstring"].data["new"]) {
+        var bytes = get_function(fn.args[0]).bytes
+        if (bytes instanceof Array) {
+          var str = String(Buffer.from(bytes))
+          str = str.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\n/g, "\\n")
+          f = macro('"'+str+'"', 0, 1);
+        }
       } else {
-        var name = "cns" + toCompile.length;
-        toCompile.push({
-          compile: function () {
-            putln("var " + name + " = " + expr + ";")
-          }
+        var args = fn.args.map(function (ix) {
+          return get_function(ix).use([]);
         });
-        f = {ins: [], outs: [-1], use: function () {return name;}};
+        var expr = cfn.use(args);
+        if (cfn.pure) {
+          f = macro(expr, 0, 1);
+        } else {
+          var name = "cns" + toCompile.length;
+          toCompile.push({
+            compile: function () {
+              putln("var " + name + " = " + expr + ";")
+            }
+          });
+          f = {ins: [], outs: [-1], use: function () {return name;}};
+        }
       }
     } else {
       throw new Error("Unsupported function kind " + fn.type);
@@ -128,7 +185,7 @@ function Parsed (parsed, modulename) {
     return t;
   }
 
-  function nget (node, name) {
+  function getNode (node, name) {
     if (node instanceof Object) {
       for (k in node) {
         var x = node[k];
@@ -139,17 +196,17 @@ function Parsed (parsed, modulename) {
     }
   }
 
-  var srcnode = nget(parsed.metadata, "source map");
+  var srcnode = getNode(parsed.metadata, "source map");
   if (srcnode) {
-    var file = nget(srcnode, "file")[1];
+    var file = getNode(srcnode, "file")[1]
     for (var i = 1; i < srcnode.length; i++) {
       var item = srcnode[i]
       if (item[0] == "function") {
         var index = item[1];
         sourcemap[index] = {
           file: file,
-          name: nget(item, "name")[1],
-          line: nget(item, "line")[1],
+          name: getNode(item, "name")[1],
+          line: getNode(item, "line")[1],
         }
       }
     }
@@ -210,7 +267,7 @@ var modules = {
   }),
   "cobre\x1fstring": new BaseModule({
     "string": newType("string"),
-    "new": macro("$1", 1, 1),
+    "new": macro("String($1)", 1, 1),
     "itos": macro("String($1)", 1, 1),
     "concat": macro("($1 + $2)", 2, 1),
     "add": macro("($1 + $2)", 2, 1),
@@ -414,12 +471,20 @@ if (mode == "node") {
     write: macro("fs_write($1, $2)", 2, 0),
     eof: macro("fs_eof($1)", 1, 1),
   });
+  modules["cobre\x1fbuffer"] = new BaseModule({
+    "new": macro("Buffer.alloc($1)", 1, 1),
+    get: macro("$1[$2]", 2, 1),
+    set: macro("$1[$2]=$3", 3, 0),
+    size: macro("$1.length", 1, 1),
+    readonly: macro("false", 1, 1),
+  });
+  modules["cobre\x1fstring"].data.tobuffer = macro("Buffer.from($1)", 1, 1)
   putln("var argv = process.argv.slice(1);")
   putln("const fs = require('fs');");
   putln("function fs_open (path, mode) { return {f: fs.openSync(path, mode), size: fs.statSync(path).size, pos: 0} }")
   putln("function fs_close (file) { fs.closeSync(file.f) }")
   putln("function fs_read (file, size) { var buf = Buffer.alloc(size); var redd = fs.readSync(file.f, buf, 0, size, file.pos); file.pos += redd; return buf.slice(0, redd); }")
-  putln("function fs_write (file, buf) { var written = fs.writeSync(file, buf, 0, buf.length, file.pos); file.pos += written; }")
+  putln("function fs_write (file, buf) { var written = fs.writeSync(file.f, buf, 0, buf.length, file.pos); file.pos += written; }")
   putln("function fs_eof (file) { return file.pos >= file.size }")
 }
 

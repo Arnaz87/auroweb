@@ -8,12 +8,6 @@ function writeNodes (writer, nodes) {
   }
 }
 
-// Structured code generation:
-// Stupid papers do not include dates god dammit
-// "Taming Control Flow: A Structured Approach to Eliminating Goto Statements"
-//    Ana M. Erosa and Laurie J. Hendren
-
-
 //=== Nodes ===//
 
 function Assign (reg, expr) {
@@ -204,7 +198,11 @@ function regularizeBranches (stmts) {
   }
 }
 
-function removeGotos (stmts) {
+function removeGotos (stmts, fnName) {
+  // Structured code generation:
+  // Stupid papers do not include dates god dammit
+  // "Taming Control Flow: A Structured Approach to Eliminating Goto Statements"
+  //    Ana M. Erosa and Laurie J. Hendren
 
   var gotos = []
   var labels = {}
@@ -223,7 +221,7 @@ function removeGotos (stmts) {
     this.stmts = stmts
 
     this.lineage = [this]
-    this.level = 0
+    this.level = 1
     this.setParent = function (parent) {
       this.parent = parent
       this.lineage = parent.lineage.slice(0)
@@ -354,6 +352,11 @@ function removeGotos (stmts) {
     var stmt = gotos.pop()
     var label = labels[stmt.lbl]
 
+    if (!label) {
+      console.warn("WARNING: A goto in " + fnName + " goes to non-existing label " + stmt.lbl)
+      continue mainloop
+    }
+
     var block = stmt.block
 
     // Move outwards until direct and the goto not inmost
@@ -393,21 +396,26 @@ function removeGotos (stmts) {
       }
     }
 
-    // Guaranteed to be siblings (I think...)
+    // Guaranteed to be siblings... I think
     if (stmt.offset < label.offset) {
       // The label must end up outside the if, because the gotos are
       // processed bottom up and no inner structure will use the labels
       // again
-      var inner = block.slice(stmt.offset+1, label.offset)
-      var body = new Block(inner, block)
-      var ifstmt = new If(body, stmt.cond)
-      block.replace(stmt.offset, label.offset, ifstmt)
+      if (stmt.offset+1 == label.offset) {
+        block.replace(stmt.offset, label.offset+1, label)
+      } else {
+        var inner = block.slice(stmt.offset+1, label.offset)
+        var body = new Block(inner, block)
+        var ifstmt = new If(body, stmt.cond)
+        block.replace(stmt.offset, label.offset, ifstmt)
+      }
     } else {
       // The label must end up outside the loop, because any inner goto
       // using it must necessarily be a continue statement
       var inner = block.slice(label.offset+1, stmt.offset)
       var body = new Block(inner, block)
-      var breaklbl = block.stmts[stmt.offset+1].label
+      var breakstmt = block.stmts[stmt.offset+1]
+      var breaklbl = breakstmt ? block.stmts[stmt.offset+1].label : null
       var ifstmt = new Loop(body, stmt.cond, label.label, breaklbl)
       block.replace(label.offset+1, stmt.offset+1, ifstmt)
     }
@@ -547,7 +555,7 @@ Code.prototype.build = function () {
   stmts = expand(stmts)
   regularizeBranches(stmts)
 
-  stmts = removeGotos(stmts)
+  stmts = removeGotos(stmts, this.fnName)
   stmts = cleanUp(stmts)
 
   this.ast = stmts;
