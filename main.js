@@ -84,7 +84,7 @@ function Parsed (parsed, modulename) {
       modcache[n] = mod;
       return mod;
     }
-    if (mdata.type == "import" || mdata.type == "functor") {
+    if (mdata.type == "import") {
       var mod = load_module(mdata.name);
       modcache[n] = mod;
       return mod;
@@ -103,10 +103,19 @@ function Parsed (parsed, modulename) {
           return get_function(item.index);
         if (item.type == "type")
           return get_type(item.index);
+        if (item.type == "module")
+          return get_module(item.index);
       };
-      mod.build = function () { throw new Exception("module is not a functor"); }
+      mod.build = function () { throw new Error("module is not a functor"); }
       modcache[n] = mod;
       return mod;
+    }
+    if (mdata.type == "use") {
+      var mod = get_module(mdata.module)
+      var item = mod.get(mdata.item)
+      if (!item) throw new Error("Module", mdata.item, "not found in", mod)
+      modcache[n] = item
+      return item
     }
     throw new Error(mdata.type + " modules not yet supported");
   }
@@ -294,16 +303,21 @@ var modules = {
     arraycache[base.id] = mod;
     return mod;
   } },
-  "cobre\x1fany": { build: function (arg) {
-    var base = arg.get("0");
-    if (!base) return anyModule;
-    var id = base.id;
-    return { "get": function (name) {
-      if (name == "new") return macro("{val: $1, tp: " + id + "}", 1, 1);
-      if (name == "test") return macro("($1.tp == " + id + ")", 1, 1);
-      if (name == "get") return macro("$1.val", 1, 1);
-    } };
-  } },
+  "cobre\x1fany": {
+    build: function (arg) {
+      var base = arg.get("0");
+      if (!base) return anyModule;
+      var id = base.id;
+      return { "get": function (name) {
+        if (name == "new") return macro("{val: $1, tp: " + id + "}", 1, 1);
+        if (name == "test") return macro("($1.tp == " + id + ")", 1, 1);
+        if (name == "get") return macro("$1.val", 1, 1);
+      } };
+    },
+    get: function (name) {
+      if (name == "any") return anyModule.data.any;
+    }
+  },
   "cobre\x1fnull": { build: function (arg) {
     var base = arg.get("0");
     var tp = newType("null(" + base.name + ")");
@@ -356,6 +370,84 @@ var modules = {
       "new": macro("$1", 1, 1),
       "get": macro("$1", 1, 1),
     });
+  } },
+  "cobre\x1ffunction": { build: function (arg) {
+    var inlist = [];
+    var innames = [];
+    var outlist = [];
+    var outnames = [];
+
+    var i = 0;
+    while (true) {
+      var a = arg.get("in" + String(i));
+      if (!a) break;
+      inlist.push(a.id);
+      innames.push(a.name);
+      i++;
+    }
+
+    var i = 0;
+    while (true) {
+      var a = arg.get("out" + String(i));
+      if (!a) break;
+      outlist.push(a.id);
+      outnames.push(a.name);
+      i++;
+    }
+
+    var id = inlist.join(",") + "->" + outlist.join(",");
+
+    var mod = recordcache[id];
+    if (mod) return mod;
+
+    var tp = newType("(" + innames.join(",") + ")->(" + outnames.join(",") + ")");
+
+    var abc = "abcdefghijklmnopqrstuvwxyz"
+    var argnames = abc.split("").slice(0, inlist.length)
+
+    function createDefinition (fn, last) {
+      last = last || ""
+      return (fn instanceof Code) ? fn.name :
+        "(function (" + argnames.join(",") + last + ") { return " + fn.use(argnames) + "})"
+    }
+
+    mod = new BaseModule({
+      "": tp,
+      "apply": {
+        ins: inlist,
+        outs: outlist,
+        use: function (fargs) {
+          return fargs[0] + "(" + fargs.slice(1).join(", ") + ")"
+        }
+      },
+      "new": { build: function (args) {
+        var fn = args.get("0")
+
+        return new BaseModule({"": {
+          ins: inlist,
+          outs: outlist,
+          use: function (fargs) { return createDefinition(fn) }
+        }})
+      } },
+      closure: {
+        "build": function (args) {
+          var fn = args.get("0")
+
+          return new BaseModule({"new": {
+            ins: inlist,
+            outs: outlist,
+            use: function (fargs) {
+              var last = (argnames.length > 0) ? ", this" : "this"
+              var def = createDefinition(fn, last)
+              return def + ".bind(" + fargs[0] + ")"
+            }
+          }});
+        }
+      }
+    });
+    mod.name = "function" + tp.name
+    recordcache[id] = mod;
+    return mod;
   } },
 };
 
