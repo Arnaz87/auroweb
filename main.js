@@ -5,6 +5,8 @@ const parse = require("./parse.js");
 const writer = require("./writer.js")();
 const Code = require("./code.js");
 
+// NOTE: This file is somewhat of a mess.
+
 function putln (str) { writer.write(str); }
 
 var toCompile = [];
@@ -42,11 +44,18 @@ var nameSet = {}
 
 reservedNames.forEach(function (name) {nameSet[name] = true})
 
-function findName (orig) {
-  var name = orig
+function findName (orig, modname) {
+  function normalize (name) {
+    name = name.replace(/[^$\w]+/g, "_")
+    if (name.match(/^\d/)) name = "_"+name
+    return name
+  }
+  var name = normalize(orig)
+  if (nameSet[name] && modname)
+    name = normalize(modname + "$" + orig)
   var i = 1
   while (nameSet[name]) {
-    name = orig + "$" + i++
+    name = normalize(orig + "$" + i++)
   }
   nameSet[name] = true
   return name
@@ -132,7 +141,7 @@ function Parsed (parsed, modulename) {
     } else if (fn.type == "code") {
       f = new Code(fn, get_function);
       if (sourcemap[n] && sourcemap[n].name) {
-        f.name = findName(sourcemap[n].name)
+        f.name = findName(sourcemap[n].name, modulename)
       } else {
         f.name = "fn_" + toCompile.length
       }
@@ -143,9 +152,16 @@ function Parsed (parsed, modulename) {
     } else if (fn.type == "bin") {
       var str = "\"";
       for (var j = 0; j < fn.data.length; j++) {
-        var char = String.fromCharCode(fn.data[j]);
-        if (char == '"') char = "\\\"";
-        if (char == "\n") char = "\\n";
+        var code = fn.data[j]
+        var char = String.fromCharCode(code)
+        if (char == '"') {char = "\\\""}
+        else if (char == "\n") {char = "\\n"}
+        else if (char == "\t") {char = "\\t"}
+        else if (code < 32) {
+          var s = code.toString(16)
+          while (s.length < 2) s = "0" + s
+          char = "\\x" + s
+        }
         str += char;
       }
       str += "\"";
@@ -156,8 +172,23 @@ function Parsed (parsed, modulename) {
       if (cfn == modules["cobre\x1fstring"].data["new"]) {
         var bytes = get_function(fn.args[0]).bytes
         if (bytes instanceof Array) {
-          var str = String(Buffer.from(bytes))
-          str = str.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\n/g, "\\n")
+          // This is necessary to correctly read multi-byte characters
+          var _str = String(Buffer.from(bytes))
+          var str = ""
+          for (var j = 0; j < _str.length; j++) {
+            var code = _str.charCodeAt(j)
+            var char = _str[j]
+            if (char == '"') char = "\\\""
+            else if (char == '\\') char = "\\\\"
+            else if (char == "\n") char = "\\n"
+            else if (char == "\t") char = "\\t"
+            else if (code < 32 || code == 127) {
+              var s = code.toString(16)
+              while (s.length < 2) s = "0" + s
+              char = "\\x" + s
+            }
+            str += char;
+          }
           f = macro('"'+str+'"', 0, 1);
         }
       } else {
@@ -207,15 +238,19 @@ function Parsed (parsed, modulename) {
 
   var srcnode = getNode(parsed.metadata, "source map");
   if (srcnode) {
-    var file = getNode(srcnode, "file")[1]
+    var file_node = getNode(srcnode, "file")
+    var file = file_node ? file_node[1] : "file"
     for (var i = 1; i < srcnode.length; i++) {
       var item = srcnode[i]
       if (item[0] == "function") {
         var index = item[1];
+        var name_node = getNode(item, "name")
+        var line_node = getNode(item, "line")
+        if (getNode(item, "name")) name = 
         sourcemap[index] = {
           file: file,
-          name: getNode(item, "name")[1],
-          line: getNode(item, "line")[1],
+          name: name_node ? name_node[1] : "",
+          line: line_node ? line_node[1] : "",
         }
       }
     }
@@ -406,9 +441,9 @@ var modules = {
     var argnames = abc.split("").slice(0, inlist.length)
 
     function createDefinition (fn, last) {
-      last = last || ""
-      return (fn instanceof Code) ? fn.name :
-        "(function (" + argnames.join(",") + last + ") { return " + fn.use(argnames) + "})"
+      var args = argnames.slice()
+      if (last) args.push(last)
+      return "(function (" + argnames.join(",") + ") {return " + fn.use(args) + "})"
     }
 
     mod = new BaseModule({
@@ -426,7 +461,7 @@ var modules = {
         return new BaseModule({"": {
           ins: inlist,
           outs: outlist,
-          use: function (fargs) { return createDefinition(fn) }
+          use: function (fargs) { return (fn instanceof Code)? fn.name : createDefinition(fn) }
         }})
       } },
       closure: {
@@ -437,8 +472,7 @@ var modules = {
             ins: inlist,
             outs: outlist,
             use: function (fargs) {
-              var last = (argnames.length > 0) ? ", this" : "this"
-              var def = createDefinition(fn, last)
+              var def = createDefinition(fn, "this")
               return def + ".bind(" + fargs[0] + ")"
             }
           }});
@@ -460,15 +494,16 @@ function readModule (filename, name) {
   return mod;
 }
 
+var paths = [process.env.HOME + "/.cobre/modules/", "./"]
+
 function load_module (name) {
   if (modules[name] !== undefined) return modules[name]
 
   var escaped = name.replace(/\x1f/g, ".")
-  var filename = "./" + escaped
-  if (fs.existsSync(filename)) return readModule(filename, name)
-
-  filename = process.env.HOME + "/.cobre/modules/" + escaped
-  if (fs.existsSync(filename)) return readModule(filename, name)
+  for (var i = paths.length-1; i >= 0; i--) {
+    var filename = paths[i] + escaped
+    if (fs.existsSync(filename)) return readModule(filename, name)
+  }
 
   throw new Error("Cannot load module " + name)
 }
@@ -479,6 +514,7 @@ function usage () {
   console.log("Options:");
   console.log("  -h --help     displays this message");
   console.log("  -o <file>     outputs the compiled code to a file instead of stdout");
+  console.log("  --path        similar to cobre's --lib option");
   console.log("  --lib         outputs a browser library");
   console.log("  --node        outputs a node js executable");
   console.log("  --html        outputs an html file that executes the code in the page");
@@ -506,6 +542,7 @@ for (var i = 2; i < argv.length; i++) {
     continue;
   }
   if (arg == "-h" || arg == "--help") usage();
+  if (arg == "--path") { paths.push(argv[++i] + "/"); continue; }
   if (arg == "--lib") { mode = "lib"; continue; }
   if (arg == "--node") { mode = "node"; continue; }
   if (arg == "--term") { mode = "term"; continue; }
