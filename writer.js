@@ -1,8 +1,8 @@
 
-function Writer () {
-  if (!(this instanceof Writer)) return new Writer();
-  this.text = "";
-  this._pre = "";
+function Writer (text) {
+  if (!(this instanceof Writer)) return new Writer()
+  this.text = text || ""
+  this._pre = ""
 }
 
 Writer.prototype.indent = function () { this._pre += "  "; }
