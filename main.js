@@ -2,27 +2,7 @@
 const fs = require("fs");
 
 const Writer = require("./writer.js")
-const compile = require("./compiler.js").compile
-
-function readModule (filename, name) {
-  var mod = compile(fs.readFileSync(filename), name);
-  //modules[name] = mod;
-  return mod;
-}
-
-var paths = [process.env.HOME + "/.cobre/modules/", "./"]
-
-function load_module (name) {
-  //if (modules[name] !== undefined) return modules[name]
-
-  var escaped = name.replace(/\x1f/g, ".")
-  for (var i = paths.length-1; i >= 0; i--) {
-    var filename = paths[i] + escaped
-    if (fs.existsSync(filename)) return readModule(filename, name)
-  }
-
-  throw new Error("Cannot load module " + name)
-}
+const compiler = require("./compiler.js")
 
 function usage () {
   console.log("Usage: " + process.argv0 + " " + argv[1] + " [options] <module>");
@@ -30,7 +10,7 @@ function usage () {
   console.log("Options:");
   console.log("  -h --help     displays this message");
   console.log("  -o <file>     outputs the compiled code to a file instead of stdout");
-  console.log("  --path        similar to cobre's --lib option");
+  console.log("  --dir         adds the directory to the module search");
   console.log("  --lib         outputs a browser library");
   console.log("  --node        outputs a node js executable");
   console.log("  --html        outputs an html file that executes the code in the page");
@@ -38,6 +18,39 @@ function usage () {
   console.log("  --nodelib     outputs a node js library");
   process.exit(0);
 }
+
+var paths = [process.env.HOME + "/.cobre/modules/", "./"]
+
+var modMap = {
+  "cobre\x1fio": true,
+  "cobre\x1fbuffer": true,
+  "cobre\x1fsystem": true,
+}
+
+var writer = new Writer();
+
+function load_module (name) {
+
+
+  if (modMap[name]) return
+  var escaped = name.replace(/\x1f/g, ".")
+
+  for (var i = paths.length-1; i >= 0; i--) {
+    var filename = paths[i] + escaped
+    if (fs.existsSync(filename)) {
+      console.log("Getting module", name, "at", filename)
+      modMap[name] = true
+      var src = fs.readFileSync(filename)
+      var text = compiler.compile(src, name)
+      writer.append(text)
+      return
+    }
+  }
+
+  throw new Error("Cannot load module " + name)
+}
+
+compiler.setModuleLoader(load_module)
 
 const argv = process.argv;
 
@@ -58,7 +71,7 @@ for (var i = 2; i < argv.length; i++) {
     continue;
   }
   if (arg == "-h" || arg == "--help") usage();
-  if (arg == "--path") { paths.push(argv[++i] + "/"); continue; }
+  if (arg == "--dir") { paths.push(argv[++i].replace(/\/?$/, "/")); continue; }
   if (arg == "--lib") { mode = "lib"; continue; }
   if (arg == "--node") { mode = "node"; continue; }
   if (arg == "--term") { mode = "term"; continue; }
@@ -135,14 +148,14 @@ if (mode == "node") {
 }
 */
 
-var mainmodule = load_module(modname)
-var output = mainmodule
-
-var writer = new Writer()
 writer.write("var Cobre = require('./cobre.js');")
-writer.text += output
-writer.write("var main = Cobre.$import(", escape(modname), ").get('main');")
+
+modname = modname.replace(/\./g, "\x1f")
+load_module(modname)
+
+writer.write("var main = Cobre.$import(", compiler.escape(modname), ").get('main');")
 writer.write("main();")
+
 output = writer.text
 
 /*

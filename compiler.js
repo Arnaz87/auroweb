@@ -62,6 +62,8 @@ var nameSet = {}
 
 reservedNames.forEach(function (name) {nameSet[name] = true})
 
+var modLoader = function () { return null }
+
 function findName (orig, modname) {
   function normalize (name) {
     name = name.replace(/[^$\w]+/g, "_")
@@ -86,68 +88,82 @@ function compile (data, moduleName) {
   var modcache = {};
   var sourcemap = {};
 
-  function module_from_line (compile_line, name) {
-    if (!name) name = "mod" + toCompile.length
-    var mod = {
-      name: name,
-      get: function (iname) {
-        return name + ".get(" + escape(iname) + ")"
-      },
-      build: function (arg) {
-        return module_from_line(name + ".build(" + arg + ")")
-      },
-      compile: function (writer) {
-        writer.write("var " + name + " = " + compile_line + ";")
-      }
+  function tryPush (item, itemtype) {
+    if (toCompile.indexOf(item) < 0) {
+      if (!item.name)
+        item.name = findName((itemtype || "item") + toCompile.length)
+      toCompile.push(item)
     }
-    toCompile.push(mod)
-    return mod
+  }
+
+  function Item (line, name) {
+    if (!name) name = "mod" + toCompile.length
+
+    this.name = name
+    this.compile = function (writer) { writer.write("var " + name + " = " + line + ";") }
+
+    // For modules
+    this.get = function (iname) { return new Item(name + ".get(" + escape(iname) + ")") }
+    this.build = function (arg) { return new Item(name + ".build(" + arg.name + ")") }
+
+    // For functions
+    this.use = function (args) { return name + "(" + args.join(", ") + ")" }
+
+    toCompile.push(this)
   }
 
   function get_module (n) {
-    if (modcache[n]) return modcache[n];
-    var mdata = parsed.modules[n-1];
+    if (modcache[n]) return modcache[n]
+    var mdata = parsed.modules[n-1]
     if (mdata.type == "build") {
-      var base = get_module(mdata.base);
-      var arg = get_module(mdata.argument);
+      var base = get_module(mdata.base)
+      var arg = get_module(mdata.argument)
       if (!base.build) console.log(base)
-      var mod = base.build(arg);
-      modcache[n] = mod;
-      return mod;
+      var mod = base.build(arg)
+      modcache[n] = mod
+      return mod
     }
     if (mdata.type == "import") {
-      var mod = macro_modules[mdata.name];
-      if (!mod) {
-        mod = module_from_line("Cobre.$import(" + escape(mdata.name) + ")", findName(mdata.name))
-      }
+      var mod = macro_modules[mdata.name]
+      if (!mod) mod = modLoader(mdata.name)
+      if (!mod) mod = new Item("Cobre.$import(" + escape(mdata.name) + ")", findName(mdata.name))
       modcache[n] = mod;
-      return mod;get_module
+      return mod
     }
     if (mdata.type == "define") {
-      var name = "mod" + toCompile.length;
-      var items = {};
+      var name = "mod" + toCompile.length
+      var items = {}
       for (var i = 0; i < mdata.items.length; i++) {
-        var item = mdata.items[i];
-        var value
-        if (item.type == "function")
-          value = get_function(item.index)
-        else if (item.type == "type")
-          value = get_type(item.index)
-        else if (item.type == "module")
-          value = get_module(item.index)
-          value.isModule = true
-        items[item.name] = value;
+        var item = mdata.items[i]
+        items[item.name] = {
+          type: item.type,
+          index: item.index,
+          value: null
+        }
+      }
+      function getItem (name) {
+        var item = items[name]
+        if (!item) return null
+        if (!item.value) {
+          if (item.type == "function")
+            item.value = get_function(item.index)
+          else if (item.type == "type")
+            item.value = get_type(item.index)
+          else if (item.type == "module")
+            item.value = get_module(item.index)
+        }
+        return item.value
       }
       var mod = {
         name: name,
-        get: function (name) { return items[name] },
+        get: function (name) { return getItem(name) },
         build: function () { throw new Error("module is not a functor"); },
         compile: function (writer) {
           writer.write("var " + name + " = new Cobre.Module({")
           writer.indent()
-          for (key in items) {
-            var item = items[key]
-            writer.write(escape(key), ": ", item.name, ",")
+          for (name in items) {
+            var item = getItem(name)
+            writer.write(escape(name), ": ", item.name, ",")
           }
           writer.dedent()
           writer.write("});")
@@ -160,8 +176,8 @@ function compile (data, moduleName) {
     if (mdata.type == "use") {
       var mod = get_module(mdata.module)
       var item = mod.get(mdata.item)
-      if (typeof item === "string") item = module_from_line(item)
       if (!item) throw new Error("Module", mdata.item, "not found in", mod)
+      tryPush(item)
       modcache[n] = item
       return item
     }
@@ -176,18 +192,8 @@ function compile (data, moduleName) {
     if (fn.type == "import") {
       var mod = get_module(fn.module)
       f = mod.get(fn.name)
-      if (typeof f == "string") {
-        var compile_line = f
-        var name = findName(fn.name)
-        f = {
-          name: name,
-          ins: fn.ins,
-          outs: fn.outs,
-          use: function (args) { return name + "(" + args.join(", ") + ")" },
-          compile: function (writer) { writer.write("var " + name + " = " + compile_line + ";") },
-        }
-        toCompile.push(f)
-      }
+      if (!f.outs) { f.ins = fn.ins; f.outs = fn.outs }
+      tryPush(f)
     } else if (fn.type == "code") {
       f = new Code(fn, get_function);
       if (sourcemap[n] && sourcemap[n].name) {
@@ -267,12 +273,13 @@ function compile (data, moduleName) {
 
   var tpcache = {};
   function get_type (n) {
-    if (tpcache[n]) return tpcache[n];
-    var tp = parsed.types[n];
-    var mod = get_module(tp.module);
-    var t = mod.get(tp.name);
-    tpcache[n] = t;
-    return t;
+    if (tpcache[n]) return tpcache[n]
+    var tp = parsed.types[n]
+    var mod = get_module(tp.module)
+    var t = mod.get(tp.name)
+    tpcache[n] = t
+    tryPush(t, "type")
+    return t
   }
 
   function getNode (node, name) {
@@ -313,7 +320,7 @@ function compile (data, moduleName) {
   writer.indent()
 
   for (var i = 0; i < toCompile.length; i++)
-    toCompile[i].compile(writer)
+    if (toCompile[i].compile) toCompile[i].compile(writer)
 
   writer.write("return ", mod.name, ";")
 
@@ -323,4 +330,6 @@ function compile (data, moduleName) {
   return writer.text
 }
 
+exports.setModuleLoader = function (fn) { modLoader = fn }
+exports.escape = escape
 exports.compile = compile

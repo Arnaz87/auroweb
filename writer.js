@@ -1,7 +1,7 @@
 
 function Writer (text) {
   if (!(this instanceof Writer)) return new Writer()
-  this.text = text || ""
+  this.text = text ? text + "\n" : ""
   this._pre = ""
 }
 
@@ -14,6 +14,14 @@ Writer.prototype.write = function () {
     line += arguments[i];
   }
   this.text += line + "\n";
+}
+
+Writer.prototype.append = function (string) {
+  var lines = string.split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    lines[i] = this._pre + lines[i]
+  }
+  this.text += lines.join("\n")
 }
 
 module.exports = Writer;
