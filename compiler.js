@@ -258,10 +258,10 @@ function compile (data, moduleName) {
           var name = "cns" + toCompile.length;
           toCompile.push({
             compile: function (writer) {
-              writer.write("var " + name + " = " + expr + ";")
+              writer.write("var " + name + " = Cobre.Lazy(function () { return " + expr + "});")
             }
           });
-          f = {ins: [], outs: [-1], use: function () {return name;}};
+          f = {ins: [], outs: [-1], use: function () {return name + "()";}};
         }
       }
     } else {
@@ -316,7 +316,7 @@ function compile (data, moduleName) {
   var mod = get_module(1);
 
   var writer = new Writer();
-  writer.write("Cobre.$export(", escape(moduleName), ", (function () {")
+  writer.write("Cobre.$export(", escape(moduleName), ", function () {")
   writer.indent()
 
   for (var i = 0; i < toCompile.length; i++)
@@ -325,7 +325,7 @@ function compile (data, moduleName) {
   writer.write("return ", mod.name, ";")
 
   writer.dedent()
-  writer.write("})());")
+  writer.write("});")
 
   return writer.text
 }

@@ -41,7 +41,7 @@ function macro (str, inc, outc) {
 var recordcache = {}
 var arraycache = {}
 
-var anyModule = new BaseModule({ "any": newType("String.Any") })
+var anyModule = new BaseModule({ "any": newType("Cobre.Any") })
 
 var macro_modules = {
   "cobre\x1fbool": new BaseModule({
@@ -94,7 +94,7 @@ var macro_modules = {
     var base = arg.get("0");
     var mod = arraycache[base.id];
     if (mod) return mod;
-    var tp = newType(null, "Cobre.Array(" + base.name + ")");
+    var tp = newType(null, "new Cobre.Array(" + base.name + ")");
     mod = new BaseModule({
       "": tp,
       "new": macro("new Array($2).fill($1)", 2, 1),
@@ -124,7 +124,7 @@ var macro_modules = {
   },
   "cobre\x1fnull": { build: function (arg) {
     var base = arg.get("0");
-    var tp = newType("null(" + base.name + ")");
+    var tp = newType("new Cobre.Null(" + base.name + ")");
     return new BaseModule({
       "": tp,
       "null": macro("null", 0, 1),
@@ -233,7 +233,8 @@ var macro_modules = {
         }})
       } },
       closure: {
-        "build": function (args) {
+        name: "Cobre.Closure",
+        build: function (args) {
           var fn = args.get("0")
 
           return new BaseModule({"new": {
