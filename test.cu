@@ -1,7 +1,7 @@
 import cobre.system { void println (string); }
 import cobre.string { string itos (int); }
 
-// División con restas sucesivas.
+// Division by repeated subtraction.
 int, int division (int num, int denom) {
   int resto = num, resul = 0;
   while (resto >= denom) {
@@ -16,7 +16,7 @@ void main () {
   int denom = 3;
   
   if (denom == 0) {
-    println("División por Cero!");
+    println("Division by zero!");
     return;
   }
 

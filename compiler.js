@@ -96,14 +96,16 @@ function compile (data, moduleName) {
     }
   }
 
+  var fnCount = 0, tpCount = 0, modCount = 0, cnsCount = 0
+
   function Item (line, name) {
-    if (!name) name = "mod" + toCompile.length
+    if (!name) name = "item" + toCompile.length
 
     this.name = name
     this.compile = function (writer) { writer.write("var " + name + " = " + line + ";") }
 
     // For modules
-    this.get = function (iname) { return new Item(name + ".get(" + escape(iname) + ")") }
+    this.get = function (iname) { return new Item(name + ".get(" + escape(iname) + ")", findName(iname, name)) }
     this.build = function (arg) { return new Item(name + ".build(" + arg.name + ")") }
 
     // For functions
@@ -120,6 +122,7 @@ function compile (data, moduleName) {
       var arg = get_module(mdata.argument)
       if (!base.build) console.log(base)
       var mod = base.build(arg)
+      if (mod instanceof Item) mod.name = findName(base.name)
       modcache[n] = mod
       return mod
     }
@@ -131,7 +134,7 @@ function compile (data, moduleName) {
       return mod
     }
     if (mdata.type == "define") {
-      var name = "mod" + toCompile.length
+      var name = "mod" + ++modCount
       var items = {}
       for (var i = 0; i < mdata.items.length; i++) {
         var item = mdata.items[i]
@@ -156,7 +159,7 @@ function compile (data, moduleName) {
       }
       var mod = {
         name: name,
-        get: function (name) { return getItem(name) },
+        get: function (iname) { return getItem(iname, findName(iname, name)) },
         build: function () { throw new Error("module is not a functor"); },
         compile: function (writer) {
           writer.write("var " + name + " = new Cobre.Module({")
@@ -192,14 +195,18 @@ function compile (data, moduleName) {
     if (fn.type == "import") {
       var mod = get_module(fn.module)
       f = mod.get(fn.name)
-      if (!f.outs) { f.ins = fn.ins; f.outs = fn.outs }
+      if (f instanceof Item) {
+        f.name = findName("fn" + ++fnCount)
+        f.ins = fn.ins
+        f.outs = fn.outs
+      }
       tryPush(f)
     } else if (fn.type == "code") {
       f = new Code(fn, get_function);
       if (sourcemap[n] && sourcemap[n].name) {
         f.name = findName(sourcemap[n].name, moduleName)
       } else {
-        f.name = "fn_" + toCompile.length
+        f.name = findName("fn" + ++fnCount)
       }
       f.fnName = f.name
       toCompile.push(f);
@@ -255,7 +262,7 @@ function compile (data, moduleName) {
         if (cfn.pure) {
           f = macro(expr, 0, 1);
         } else {
-          var name = "cns" + toCompile.length;
+          var name = "cns" + ++cnsCount;
           toCompile.push({
             compile: function (writer) {
               writer.write("var " + name + " = Cobre.Lazy(function () { return " + expr + "});")
@@ -278,6 +285,7 @@ function compile (data, moduleName) {
     var mod = get_module(tp.module)
     var t = mod.get(tp.name)
     tpcache[n] = t
+    if (!t.name) t.name = "tp" + ++tpCount
     tryPush(t, "type")
     return t
   }
