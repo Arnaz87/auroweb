@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title></title>
+</head>
+<body>
+
+<p>Select a cobre module to run (it can only have dependencies on cobre core modules)</p>
+<input type="file" id="fileinput" value="" onchange="upload()">
+<pre id="contentpre"></pre>
+
+<script type="text/javascript" src="bundle.js"></script>
+<script type="text/javascript">
+var _log = console.log
+console.log = function () {
+  _log.apply(console, arguments)
+  var str = arguments[0]
+  if (typeof str === "undefined" || str === null) str = ""
+  contentpre.textContent += str + "\n"
+}
+
+var codes = []
+
+function compile (buffer) {
+  var code = Cobre.compile(buffer, "main")
+  codes.push(code)
+  eval(code)
+
+  try {
+    Cobre.$import("main").get("main")()
+  } catch (e) {
+    contentpre.textContent += String(e) + "\n"
+    throw e
+  }
+}
+
+var reader = new FileReader()
+reader.onload = function () {
+  compile(new Uint8Array(reader.result))
+}
+
+function upload () {
+  reader.readAsArrayBuffer(fileinput.files[0])
+}
+</script>
+</body>
+</html>
