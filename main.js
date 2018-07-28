@@ -8,15 +8,12 @@ function usage () {
   console.log("Usage: " + process.argv0 + " " + argv[1] + " [options] <module>");
   console.log("\n    Reads the node module and outputs the compiled javascript code to stdout.\n");
   console.log("Options:");
-  console.log("  -h --help     displays this message");
-  console.log("  -o <file>     outputs the compiled code to a file instead of stdout");
-  console.log("  --dir         adds the directory to the module search");
-  console.log("  --lib         outputs a browser library");
-  console.log("  --node        outputs a node js executable");
-  console.log("  --html        outputs an html file that executes the code in the page");
-  console.log("  --term        outputs an html file whose body acts like a terminal");
-  console.log("  --nodelib     outputs a node js library");
-  process.exit(0);
+  console.log("  -h --help     displays this message")
+  console.log("  -o <file>     outputs the compiled code to a file instead of stdout")
+  console.log("  --dir         adds the directory to the module search")
+  console.log("  --include     compile all found dependencies into the file")
+  console.log("  --node        outputs a node js executable")
+  process.exit(0)
 }
 
 var paths = [process.env.HOME + "/.cobre/modules/", "./"]
@@ -27,12 +24,11 @@ var modMap = {
   "cobre\x1fsystem": true,
 }
 
-var writer = new Writer();
+var writer = new Writer()
+var include = false
 
-function load_module (name) {
-
-
-  if (modMap[name]) return
+function load_module (name, force) {
+  if (!include && !force || modMap[name]) return
   var escaped = name.replace(/\x1f/g, ".")
 
   for (var i = paths.length-1; i >= 0; i--) {
@@ -47,7 +43,7 @@ function load_module (name) {
     }
   }
 
-  throw new Error("Cannot load module " + name)
+  console.warn("module " + name + " not found")
 }
 
 compiler.setModuleLoader(load_module)
@@ -72,6 +68,7 @@ for (var i = 2; i < argv.length; i++) {
   }
   if (arg == "-h" || arg == "--help") usage();
   if (arg == "--dir") { paths.push(argv[++i].replace(/\/?$/, "/")); continue; }
+  if (arg == "--include") { include = true; continue; }
   if (arg == "--lib") { mode = "lib"; continue; }
   if (arg == "--node") { mode = "node"; continue; }
   if (arg == "--term") { mode = "term"; continue; }
@@ -90,105 +87,17 @@ for (var i = 2; i < argv.length; i++) {
 
 if (!modname) { console.log("No module given"); process.exit(1); }
 
-/*
-if (!mode && outfile) {
-  var parts = outfile.split(".");
-  if (parts.length > 1) {
-    var ext = parts[parts.length-1];
-    if (ext == "html") {
-      mode = "html";
-    } else if (ext == "js") {
-      mode = "node";
-    }
-  }
-}
-if (!mode) mode = "node";
-
-if (mode == "term") {
-  modules["cobre\x1fsystem"].data["println"].macro = "println($1)";
-  putln("function println (line) { document.getElementById('content').textContent += line + '\\n'; }");
-}
+modname = modname.replace(/\./g, "\x1f")
+load_module(modname, true)
 
 if (mode == "node") {
-  var orig = modules["cobre\x1fsystem"].data;
-  modules["cobre\x1fsystem"] = new BaseModule({
-    println: orig.println,
-    error: orig.error,
-    exit: macro("process.exit($1)", 1, 0),
-    argc: macro("argv.length", 0, 1),
-    argv: macro("argv[$1]", 1, 1),
-  });
-  modules["cobre\x1fio"] = new BaseModule({
-    file: newType("file"),
-    mode: newType("mode"),
-    r: macro("'r'", 0, 1),
-    w: macro("'w'", 0, 1),
-    a: macro("'a'", 0, 1),
-    open: macro("fs_open($1, $2)", 2, 1),
-    close: macro("fs_close($1)", 1, 0),
-    read: macro("fs_read($1, $2)", 2, 1),
-    write: macro("fs_write($1, $2)", 2, 0),
-    eof: macro("fs_eof($1)", 1, 1),
-  });
-  modules["cobre\x1fbuffer"] = new BaseModule({
-    "new": macro("Buffer.alloc($1)", 1, 1),
-    get: macro("$1[$2]", 2, 1),
-    set: macro("$1[$2]=$3", 3, 0),
-    size: macro("$1.length", 1, 1),
-    readonly: macro("false", 1, 1),
-  });
-  modules["cobre\x1fstring"].data.tobuffer = macro("Buffer.from($1)", 1, 1)
-  putln("var argv = process.argv.slice(1);")
-  putln("const fs = require('fs');");
-  putln("function fs_open (path, mode) { return {f: fs.openSync(path, mode), size: fs.statSync(path).size, pos: 0} }")
-  putln("function fs_close (file) { fs.closeSync(file.f) }")
-  putln("function fs_read (file, size) { var buf = Buffer.alloc(size); var redd = fs.readSync(file.f, buf, 0, size, file.pos); file.pos += redd; return buf.slice(0, redd); }")
-  putln("function fs_write (file, buf) { var written = fs.writeSync(file.f, buf, 0, buf.length, file.pos); file.pos += written; }")
-  putln("function fs_eof (file) { return file.pos >= file.size }")
-}
-*/
-
-writer.write("var Cobre = require('./cobre.js');")
-
-modname = modname.replace(/\./g, "\x1f")
-load_module(modname)
-
-writer.write("var main = Cobre.$import(", compiler.escape(modname), ").get('main');")
-writer.write("main();")
-
-output = writer.text
-
-/*
-var mainfn = mainmodule.get("main");
-
-putln("function goto (lbl) { throw new Error('goto ' + lbl); }")
-putln("function error (msg) { throw new Error(msg); }");
-putln("function charat (str, i) { return [str[i], i+1]; }");
-
-for (var i = 0; i < toCompile.length; i++) {
-  var fn = toCompile[i];
-  fn.compile(writer);
+  var orig = writer.text
+  writer = new Writer()
+  writer.write("var Cobre = require('./cobre.js');")
+  writer.append(orig)
+  writer.write("var main = Cobre.$import(", compiler.escape(modname), ").get('main');")
+  writer.write("main();")
 }
 
-for (var i = 0; i < toRun.length; i++) {
-  var fn = toRun[i];
-  putln(fn.name + "();");
-}
-
-//mainmodule.compile();
-putln(mainfn.name + "();");
-
-var output = writer.text;
-
-if (mode == "html" || mode == "term") {
-  var pre = "<!DOCTYPE html>\n" +
-    "<html>\n<head>\n  <meta charset=\"utf-8\">\n</head>\n<body>\n";
-  if (mode == "term") { pre += "<pre id=\"content\"></pre>\n"; }
-  pre += "<script type=\"text/javascript\">\n";
-  var post = "<" + "/script>\n<" + "/body>\n<" + "/html>";
-  output = pre + output + post;
-}
-*/
-
-if (outfile) fs.writeFileSync(outfile, output);
-else process.stdout.write(output);
+if (outfile) fs.writeFileSync(outfile, writer.text)
+else process.stdout.write(writer.text)

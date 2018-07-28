@@ -17,11 +17,12 @@ Writer.prototype.write = function () {
 }
 
 Writer.prototype.append = function (string) {
-  var lines = string.split("\n")
+  var lines = string.replace(/\n$/, "").split("\n")
+
   for (var i = 0; i < lines.length; i++) {
     lines[i] = this._pre + lines[i]
   }
-  this.text += lines.join("\n")
+  this.text += lines.join("\n") + "\n"
 }
 
 module.exports = Writer;

@@ -560,11 +560,7 @@ Code.prototype.build = function () {
 
   this.ast = stmts;
   this.regs = regs;
-}
-
-Code.prototype.compile = function (writer) {
-  this.build();
-
+  
   var args = [], regs = [];
   for (var i = 0; i < this.ins.length; i++)
     args.push(this.regs[i].use());
@@ -575,11 +571,16 @@ Code.prototype.compile = function (writer) {
     }
   }
 
-  writer.write("function ", this.name, " (" + args.join(", ") + ") {");
+  this.regs = regs
+  this.args = args
+}
+
+Code.prototype.compile = function (writer) {
+  writer.write("function ", this.name, " (" + this.args.join(", ") + ") {");
   writer.indent();
 
-  if (regs.length > 0) {
-    writer.write("var " + regs.join(", ") + ";");
+  if (this.regs.length > 0) {
+    writer.write("var " + this.regs.join(", ") + ";");
   }
   writeNodes(writer, this.ast);
   writer.dedent();

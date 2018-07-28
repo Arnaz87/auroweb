@@ -18,6 +18,8 @@ function LazyItem (callback) {
 
   var fn = function () { return (item || (item = callback())).apply(null, arguments) }
 
+  fn.resolve = function () { return item || (item = callback()) }
+
   var fields = ["get", "test", "wrap", "unwrap", "build", "equals"]
   fields.forEach(function (field) {
     fn[field] = function (...args) {
@@ -60,9 +62,15 @@ Cobre.Lazy = function (fn) {
 }
 
 Cobre.system = {
+  println: function (msg) {
+    console.log(msg)
+  },
   exit: function () {
     if (typeof process !== "undefined") process.exit()
     else throw "Cobre Exit"
+  },
+  error: function (msg) {
+    throw new Error(msg)
   },
   argv: (typeof argv !== "undefined")? argv : []
 }

@@ -51,11 +51,11 @@ var macro_modules = {
     "not": macro("!$1", 1, 1),
   }),
   "cobre\x1fsystem": new BaseModule({
-    "println": macro("console.log($1)", 1, 0),
-    "error": macro("Cobre.error($1)", 1, 0),
-    "exit": macro("Cobre.exit()", 0, 0),
-    argc: macro("Cobre.argv.length", 0, 1),
-    argv: macro("Cobre.argv[$1]", 1, 1),
+    "println": macro("Cobre.system.println($1)", 1, 0),
+    "error": macro("Cobre.system.error($1)", 1, 0),
+    "exit": macro("Cobre.system.exit()", 0, 0),
+    argc: macro("Cobre.system.argv.length", 0, 1),
+    argv: macro("Cobre.system.argv[$1]", 1, 1),
   }),
   "cobre\x1fint": new BaseModule({
     "int": newType("Cobre.Int"),

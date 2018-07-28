@@ -89,7 +89,8 @@ function compile (data, moduleName) {
   var sourcemap = {};
 
   function tryPush (item, itemtype) {
-    if (toCompile.indexOf(item) < 0) {
+    var index = toCompile.indexOf(item)
+    if (index < 0) {
       if (!item.name)
         item.name = findName((itemtype || "item") + toCompile.length)
       toCompile.push(item)
@@ -115,7 +116,11 @@ function compile (data, moduleName) {
   }
 
   function get_module (n) {
-    if (modcache[n]) return modcache[n]
+    if (modcache[n]) {
+      var m = modcache[n]
+      tryPush(m)
+      return m
+    }
     var mdata = parsed.modules[n-1]
     if (mdata.type == "build") {
       var base = get_module(mdata.base)
@@ -164,16 +169,17 @@ function compile (data, moduleName) {
         compile: function (writer) {
           writer.write("var " + name + " = new Cobre.Module({")
           writer.indent()
-          for (name in items) {
-            var item = getItem(name)
-            writer.write(escape(name), ": ", item.name, ",")
+          for (var nm in items) {
+            var item = getItem(nm)
+            writer.write(escape(nm), ": ", item.name, ",")
           }
           writer.dedent()
           writer.write("});")
         }
       }
-      toCompile.push(mod);
       modcache[n] = mod;
+      for (var nm in items) getItem(nm)
+      toCompile.push(mod);
       return mod;
     }
     if (mdata.type == "use") {
@@ -275,6 +281,7 @@ function compile (data, moduleName) {
       throw new Error("Unsupported function kind " + fn.type);
     }
     funcache[n] = f;
+    if (f instanceof Code) f.build()
     return f;
   }
 
@@ -323,12 +330,16 @@ function compile (data, moduleName) {
 
   var mod = get_module(1);
 
-  var writer = new Writer();
+  var writer = new Writer()
   writer.write("Cobre.$export(", escape(moduleName), ", function () {")
   writer.indent()
 
-  for (var i = 0; i < toCompile.length; i++)
-    if (toCompile[i].compile) toCompile[i].compile(writer)
+  while (toCompile.length > 0) {
+    var item = toCompile.shift()
+    if (item.compile) {
+      item.compile(writer)
+    }
+  }
 
   writer.write("return ", mod.name, ";")
 

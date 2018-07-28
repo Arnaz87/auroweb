@@ -6,7 +6,7 @@ Published under the [MIT](https://mit-license.org/) license.
 
 # Usage
 
-To compile a file run `node main.js [-o <out-file>] <file>`, more instructions are available with `node main.js --help`.
+To compile a file run `node main.js [-o <out.js>] <module>`, more instructions are available with `node main.js --help`.
 
 ## Compiler Library
 
