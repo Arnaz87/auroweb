@@ -9,6 +9,8 @@ const macro = macros.macro
 
 const Cobre = require("./cobre.js")
 
+var modLoader = function () { return null }
+
 function escape (_str) {
   var str = ""
   for (var j = 0; j < _str.length; j++) {
@@ -58,35 +60,33 @@ var reservedNames =  [
   "Cobre"
 ];
 
-var nameSet = {}
-
-reservedNames.forEach(function (name) {nameSet[name] = true})
-
-var modLoader = function () { return null }
-
-function findName (orig, modname) {
-  function normalize (name) {
-    name = name.replace(/[^$\w]+/g, "_")
-    if (name.match(/^\d/)) name = "_"+name
-    return name
-  }
-  var name = normalize(orig)
-  if (nameSet[name] && modname)
-    name = normalize(modname + "$" + orig)
-  var i = 1
-  while (nameSet[name]) {
-    name = normalize(orig + "$" + i++)
-  }
-  nameSet[name] = true
-  return name
-}
-
 
 function compile (data, moduleName) {
   var parsed = parse(data)
   var toCompile = []
   var modcache = {};
   var sourcemap = {};
+
+  var nameSet = {}
+
+  reservedNames.forEach(function (name) {nameSet[name] = true})
+
+  function findName (orig, modname) {
+    function normalize (name) {
+      name = name.replace(/[^$\w]+/g, "_")
+      if (name.match(/^\d/)) name = "_"+name
+      return name
+    }
+    var name = normalize(orig)
+    if (nameSet[name] && modname)
+      name = normalize(modname + "$" + orig)
+    var i = 1
+    while (nameSet[name]) {
+      name = normalize(orig + "$" + i++)
+    }
+    nameSet[name] = true
+    return name
+  }
 
   function tryPush (item, itemtype) {
     var index = toCompile.indexOf(item)
@@ -215,7 +215,6 @@ function compile (data, moduleName) {
         f.name = findName("fn" + ++fnCount)
       }
       f.fnName = f.name
-      toCompile.push(f);
     } else if (fn.type == "int") {
       f = macro(String(fn.value), 0, 1);
     } else if (fn.type == "bin") {
@@ -281,7 +280,10 @@ function compile (data, moduleName) {
       throw new Error("Unsupported function kind " + fn.type);
     }
     funcache[n] = f;
-    if (f instanceof Code) f.build()
+    if (f instanceof Code) {
+      f.build()
+      toCompile.push(f)
+    }
     return f;
   }
 
