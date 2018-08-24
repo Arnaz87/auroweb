@@ -34,7 +34,6 @@ function load_module (name, force) {
   for (var i = paths.length-1; i >= 0; i--) {
     var filename = paths[i] + escaped
     if (fs.existsSync(filename)) {
-      console.log("Getting module", name, "at", filename)
       modMap[name] = true
       var src = fs.readFileSync(filename)
       var text = compiler.compile(src, name)

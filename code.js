@@ -228,6 +228,7 @@ function removeGotos (stmts, fnName) {
       this.lineage.push(this)
       this.level = this.lineage.length
       for (var i = 0; i < this.stmts.length; i++) {
+        var stmt = this.stmts[i]
         if (stmt.body !== undefined) stmt.body.setParent(this)
       }
     }
@@ -241,8 +242,8 @@ function removeGotos (stmts, fnName) {
           stmt.block = this
         }
         if (stmt.body !== undefined) {
-          stmt.body.offset = i
           stmt.body.setParent(this)
+          stmt.body.offset = i
         }
       }
     }
@@ -381,7 +382,7 @@ function removeGotos (stmts, fnName) {
       var nextblock = label.block.lineage[block.level]
       if (nextblock.offset < stmt.offset) {
         throw new Exception("Goto Lifting not implemented")
-        continue mainloop
+        break mainloop
       } else {
         var reg = getLabelReg(label.label)
         var inner = block.slice(stmt.offset+1, nextblock.offset)
@@ -395,30 +396,33 @@ function removeGotos (stmts, fnName) {
         block = stmt.block
       }
     }
-
+    
     // Guaranteed to be siblings... I think
-    if (stmt.offset < label.offset) {
-      // The label must end up outside the if, because the gotos are
-      // processed bottom up and no inner structure will use the labels
-      // again
-      if (stmt.offset+1 == label.offset) {
-        block.replace(stmt.offset, label.offset+1, label)
+    if (stmt.block.level == label.block.level) {
+      if (stmt.offset < label.offset) {
+        // The label must end up outside the if, because the gotos are
+        // processed bottom up and no inner structure will use the labels
+        // again
+        if (stmt.offset+1 == label.offset) {
+          block.replace(stmt.offset, label.offset+1, label)
+        } else {
+          var inner = block.slice(stmt.offset+1, label.offset)
+          var body = new Block(inner, block)
+          var ifstmt = new If(body, stmt.cond)
+          block.replace(stmt.offset, label.offset, ifstmt)
+        }
       } else {
-        var inner = block.slice(stmt.offset+1, label.offset)
+        // The label must end up outside the loop, because any inner goto
+        // using it must necessarily be a continue statement
+        var inner = block.slice(label.offset+1, stmt.offset)
         var body = new Block(inner, block)
-        var ifstmt = new If(body, stmt.cond)
-        block.replace(stmt.offset, label.offset, ifstmt)
+        var breakstmt = block.stmts[stmt.offset+1]
+        var breaklbl = breakstmt ? block.stmts[stmt.offset+1].label : null
+        var ifstmt = new Loop(body, stmt.cond, label.label, breaklbl)
+        block.replace(label.offset+1, stmt.offset+1, ifstmt)
       }
-    } else {
-      // The label must end up outside the loop, because any inner goto
-      // using it must necessarily be a continue statement
-      var inner = block.slice(label.offset+1, stmt.offset)
-      var body = new Block(inner, block)
-      var breakstmt = block.stmts[stmt.offset+1]
-      var breaklbl = breakstmt ? block.stmts[stmt.offset+1].label : null
-      var ifstmt = new Loop(body, stmt.cond, label.label, breaklbl)
-      block.replace(label.offset+1, stmt.offset+1, ifstmt)
-    }
+    } else throw new Error("goto " + stmt.lbl + " not sibling of target label")
+    
     var reg = usedLabels[label.label]
     if (reg) {
       label.block.insert(label.offset, new Assign(reg, False))

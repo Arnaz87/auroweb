@@ -61,6 +61,10 @@ Cobre.Lazy = function (fn) {
   }
 }
 
+var argv
+if (typeof process.argv === "undefined") argv = []
+else argv = process.argv.slice(1)
+
 Cobre.system = {
   println: function (msg) {
     console.log(msg)
@@ -72,7 +76,7 @@ Cobre.system = {
   error: function (msg) {
     throw new Error(msg)
   },
-  argv: (typeof argv !== "undefined")? argv : []
+  argv: argv
 }
 
 function teq (a, b) {
@@ -184,6 +188,45 @@ Cobre.String = {
   },
   charat: function (str, i) { return [str[i], i+1] }
 }
+
+Cobre.ArrayList = function (base) {
+  Cobre.Type.call(this, null, "cobre.utlis.arraylist")
+  this.is_arraylist = true
+  this.base = base
+  this.equals = function (t) {
+    return t.is_arraylist && teq(base, t.base)
+  }
+}
+
+Cobre.StringMap = function (base) {
+  Cobre.Type.call(this, null, "cobre.stringmap")
+  this.is_strmap = true
+  this.base = base
+  this.equals = function (t) { return t.is_strmap && teq(base, t.base) }
+  this.Iterator = new Cobre.Type(null, "cobre.stringmap.iterator")
+}
+
+Cobre.StringMap.Iterator = function (base) {
+  Cobre.Type.call(this, null, "cobre.stringmap.iterator")
+  this.is_strmap_iter = true
+  this.base = base
+  this.equals = function (t) { return t.is_strmap_iter && teq(base, t.base) }
+}
+
+Cobre.StringMap.Iterator.$new = function (map) {
+  return {
+    map: map,
+    i: 0,
+    keys: Object.keys(map),
+    next: function () {
+      if (this.i >= this.keys.length) return null
+      var k = this.keys[this.i++]
+      return [k, this.map[k]]
+    }
+  }
+}
+
+Cobre.StringMap.next
 
 var fs = $require("fs")
 if (fs) Cobre.$export("cobre\x1fio", new Cobre.Module({

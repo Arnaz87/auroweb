@@ -40,6 +40,8 @@ function macro (str, inc, outc) {
 
 var recordcache = {}
 var arraycache = {}
+var arraylistcache = {}
+var strmapcache = {}
 
 var anyModule = new BaseModule({ "any": newType("Cobre.Any") })
 
@@ -75,6 +77,7 @@ var macro_modules = {
     "new": macro("Cobre.String.$new($1)", 1, 1),
     "itos": macro("String($1)", 1, 1),
     "concat": macro("($1 + $2)", 2, 1),
+    "slice": macro("$1.slice($2, $3)", 3, 1),
     "add": macro("($1 + $2)", 2, 1),
     "eq": macro("($1 == $2)", 2, 1),
     "length": macro("$1.length", 1, 1),
@@ -250,6 +253,41 @@ var macro_modules = {
     });
     mod.name = "function" + tp.name
     recordcache[id] = mod;
+    return mod;
+  } },
+  "cobre\x1futils\x1fstringmap": {build: function (arg) {
+    var base = arg.get("0");
+    var mod = strmapcache[base.id];
+    if (mod) return mod;
+    var tp = newType(null, "new Cobre.StringMap(" + base.name + ")");
+    var itertp = newType(null, "new Cobre.StringMap.Iterator(" + base.name + ")")
+    mod = new BaseModule({
+      "": tp,
+      "iterator": itertp,
+      "new": macro("{}", 0, 1),
+      "get": macro("$1[$2]", 2, 1),
+      "set": macro("$1[$2]=$3", 3, 0),
+      "remove": macro("delete $1[$2]", 3, 0),
+      "new\x1diterator": macro("Cobre.StringMap.Iterator.$new($1)", 1, 1),
+      "next\x1diterator": macro("$1.next()", 1, 1),
+    })
+    strmapcache[base.id] = mod;
+    return mod;
+  } },
+  "cobre\x1futils\x1farraylist": {build: function (arg) {
+    var base = arg.get("0");
+    var mod = arraylistcache[base.id];
+    if (mod) return mod;
+    var tp = newType(null, "new Cobre.ArrayList(" + base.name + ")");
+    mod = new BaseModule({
+      "": tp,
+      "new": macro("[]", 0, 1),
+      "get": macro("$1[$2]", 2, 1),
+      "set": macro("$1[$2]=$3", 3, 0),
+      "len": macro("$1.length", 1, 1),
+      "push": macro("$1.push($2)", 2, 0),
+    });
+    arraylistcache[base.id] = mod;
     return mod;
   } },
 }
