@@ -1,11 +1,11 @@
 
-var Cobre = require("./cobre.js")
+var Auro = require("./auro.js")
 var Compiler = require("./compiler.js")
 
-Cobre.escape = Compiler.escape
-Cobre.compile = Compiler.compile
+Auro.escape = Compiler.escape
+Auro.compile = Compiler.compile
 
 if (typeof window === "undefined")
   throw new Error("Not running in a browser")
 
-window.Cobre = Cobre
+window.Auro = Auro

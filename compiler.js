@@ -7,7 +7,7 @@ const macros = require("./macros.js")
 const macro_modules = macros.modules
 const macro = macros.macro
 
-const Cobre = require("./cobre.js")
+const Auro = require("./auro.js")
 
 var modLoader = function () { return null }
 
@@ -56,8 +56,8 @@ var reservedNames =  [
   "document", "window", "console",
   // NodeJS specific
   "global", "require", "module", "process", "Buffer",
-  // Cobre
-  "Cobre"
+  // Auro
+  "Auro"
 ];
 
 
@@ -134,7 +134,7 @@ function compile (data, moduleName) {
     if (mdata.type == "import") {
       var mod = macro_modules[mdata.name]
       if (!mod) mod = modLoader(mdata.name)
-      if (!mod) mod = new Item("Cobre.$import(" + escape(mdata.name) + ")", findName(mdata.name))
+      if (!mod) mod = new Item("Auro.$import(" + escape(mdata.name) + ")", findName(mdata.name))
       modcache[n] = mod;
       return mod
     }
@@ -167,7 +167,7 @@ function compile (data, moduleName) {
         get: function (iname) { return getItem(iname, findName(iname, name)) },
         build: function () { throw new Error("module is not a functor"); },
         compile: function (writer) {
-          writer.write("var " + name + " = new Cobre.Module({")
+          writer.write("var " + name + " = new Auro.Module({")
           writer.indent()
           for (var nm in items) {
             var item = getItem(nm)
@@ -237,7 +237,7 @@ function compile (data, moduleName) {
       f.bytes = fn.data
     } else if (fn.type == "call") {
       var cfn = get_function(fn.index);
-      if (cfn == macro_modules["cobre\x1fstring"].data["new"]) {
+      if (cfn == macro_modules["auro\x1fstring"].data["new"]) {
         var bytes = get_function(fn.args[0]).bytes
         if (bytes instanceof Array) {
           // This is necessary to correctly read multi-byte characters
@@ -270,7 +270,7 @@ function compile (data, moduleName) {
           var name = "cns" + ++cnsCount;
           toCompile.push({
             compile: function (writer) {
-              writer.write("var " + name + " = Cobre.Lazy(function () { return " + expr + "});")
+              writer.write("var " + name + " = Auro.Lazy(function () { return " + expr + "});")
             }
           });
           f = {ins: [], outs: [-1], use: function () {return name + "()";}};
@@ -333,7 +333,7 @@ function compile (data, moduleName) {
   var mod = get_module(1);
 
   var writer = new Writer()
-  writer.write("Cobre.$export(", escape(moduleName), ", function () {")
+  writer.write("Auro.$export(", escape(moduleName), ", function () {")
   writer.indent()
 
   while (toCompile.length > 0) {

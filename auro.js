@@ -9,9 +9,9 @@ function $require (name) {
   }
 }
 
-var Cobre = {};
+var Auro = {};
 
-Cobre._modules = {};
+Auro._modules = {};
 
 function LazyItem (callback) {
   var item = null
@@ -32,29 +32,29 @@ function LazyItem (callback) {
   return fn
 }
 
-Cobre.$import = function $import (name) {
-  return Cobre._modules[name] || LazyItem(function () {
-    var mod = Cobre._modules[name]
+Auro.$import = function $import (name) {
+  return Auro._modules[name] || LazyItem(function () {
+    var mod = Auro._modules[name]
     if (!mod) throw new Error("module " + name + " not found")
     return mod
   })
 }
 
-Cobre.$export = function $export (name, mod) {
-  if (Cobre._modules[name])
+Auro.$export = function $export (name, mod) {
+  if (Auro._modules[name])
     console.warn("module " + name + " already exists")
   if (typeof mod === "function") mod = LazyItem(mod)
-  Cobre._modules[name] = mod
+  Auro._modules[name] = mod
 }
 
-Cobre.Module = function Module (data) { this.data = data }
-Cobre.Module.prototype.get = function get (name) {
+Auro.Module = function Module (data) { this.data = data }
+Auro.Module.prototype.get = function get (name) {
   if (this.data instanceof Function)
     return this.data(name)
   return this.data[name]
 }
 
-Cobre.Lazy = function (fn) {
+Auro.Lazy = function (fn) {
   var val = null
   return function () {
     return val || (val = fn())
@@ -65,13 +65,13 @@ var argv
 if (typeof process.argv === "undefined") argv = []
 else argv = process.argv.slice(1)
 
-Cobre.system = {
+Auro.system = {
   println: function (msg) {
     console.log(msg)
   },
   exit: function () {
     if (typeof process !== "undefined") process.exit()
-    else throw "Cobre Exit"
+    else throw "Auro Exit"
   },
   error: function (msg) {
     throw new Error(msg)
@@ -86,42 +86,42 @@ function teq (a, b) {
 }
 
 var typeCount = 0
-Cobre.Type = function (base, name, equals) {
+Auro.Type = function (base, name, equals) {
   this.wrap = function (val) { return {type: this, value: val} }
   this.test = function (val) { return val.type && teq(val.type, this) }
   this.unwrap = function (val) { return val.value }
 }
 
-Cobre.Any = new Cobre.Type(null, "Any")
-Cobre.Int = {
+Auro.Any = new Auro.Type(null, "Any")
+Auro.Int = {
   wrap: function (str) { return str },
   unwrap: function (any) { return any },
   test: function (any) { return typeof any === "number" }
 }
-Cobre.Bool = {
+Auro.Bool = {
   wrap: function (str) { return str },
   unwrap: function (any) { return any },
   test: function (any) { return typeof any === "boolean" }
 }
 
-Cobre.Null = function (base) {
-  Cobre.Type.call(this, null, "cobre.null")
+Auro.Null = function (base) {
+  Auro.Type.call(this, null, "auro.null")
   this.is_null = true
   this.base = base
   this.equals = function (t) {
     return t.is_null && teq(base, t.base)
   }
 }
-Cobre.Array = function (base) {
-  Cobre.Type.call(this, null, "cobre.array")
+Auro.Array = function (base) {
+  Auro.Type.call(this, null, "auro.array")
   this.is_array = true
   this.base = base
   this.equals = function (t) {
     return t.is_array && teq(base, t.base)
   }
 }
-Cobre.Record = function (fields) {
-  Cobre.Type.call(this, null, "cobre.record")
+Auro.Record = function (fields) {
+  Auro.Type.call(this, null, "auro.record")
   this.is_record = true
   this.fields = fields
   this.equals = function (t) {
@@ -133,8 +133,8 @@ Cobre.Record = function (fields) {
     return true
   }
 }
-Cobre.Function = function (ins, outs) {
-  Cobre.Type.call(this, null, "cobre.function")
+Auro.Function = function (ins, outs) {
+  Auro.Type.call(this, null, "auro.function")
   this.is_fn = true
   this.ins = ins
   this.outs = outs
@@ -153,10 +153,10 @@ Cobre.Function = function (ins, outs) {
   }
 }
 
-Cobre.Closure = {
+Auro.Closure = {
   build: function (arg) {
     var fn = arg.get("0")
-    return new Cobre.Module({
+    return new Auro.Module({
       "new": function (bound) {
         return function () {
           arguments[arguments.length++] = bound
@@ -167,7 +167,7 @@ Cobre.Closure = {
   }
 }
 
-Cobre.String = {
+Auro.String = {
   wrap: function (str) { return str },
   unwrap: function (any) { return any },
   test: function (any) { return typeof any === "string" },
@@ -189,8 +189,8 @@ Cobre.String = {
   charat: function (str, i) { return [str[i], i+1] }
 }
 
-Cobre.ArrayList = function (base) {
-  Cobre.Type.call(this, null, "cobre.utlis.arraylist")
+Auro.ArrayList = function (base) {
+  Auro.Type.call(this, null, "auro.utlis.arraylist")
   this.is_arraylist = true
   this.base = base
   this.equals = function (t) {
@@ -198,22 +198,22 @@ Cobre.ArrayList = function (base) {
   }
 }
 
-Cobre.StringMap = function (base) {
-  Cobre.Type.call(this, null, "cobre.stringmap")
+Auro.StringMap = function (base) {
+  Auro.Type.call(this, null, "auro.stringmap")
   this.is_strmap = true
   this.base = base
   this.equals = function (t) { return t.is_strmap && teq(base, t.base) }
-  this.Iterator = new Cobre.Type(null, "cobre.stringmap.iterator")
+  this.Iterator = new Auro.Type(null, "auro.stringmap.iterator")
 }
 
-Cobre.StringMap.Iterator = function (base) {
-  Cobre.Type.call(this, null, "cobre.stringmap.iterator")
+Auro.StringMap.Iterator = function (base) {
+  Auro.Type.call(this, null, "auro.stringmap.iterator")
   this.is_strmap_iter = true
   this.base = base
   this.equals = function (t) { return t.is_strmap_iter && teq(base, t.base) }
 }
 
-Cobre.StringMap.Iterator.$new = function (map) {
+Auro.StringMap.Iterator.$new = function (map) {
   return {
     map: map,
     i: 0,
@@ -226,10 +226,10 @@ Cobre.StringMap.Iterator.$new = function (map) {
   }
 }
 
-Cobre.StringMap.next
+Auro.StringMap.next
 
 var fs = $require("fs")
-if (fs) Cobre.$export("cobre\x1fio", new Cobre.Module({
+if (fs) Auro.$export("auro\x1fio", new Auro.Module({
   r: function () {return "r"},
   w: function () {return "w"},
   a: function () {return "a"},
@@ -251,7 +251,7 @@ if (fs) Cobre.$export("cobre\x1fio", new Cobre.Module({
 }))
 
 if (typeof window !== "undefined")
-  window.Cobre = Cobre
+  window.Auro = Auro
 if (typeof module !== "undefined")
-  module.exports = Cobre
+  module.exports = Auro
 })();

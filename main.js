@@ -16,12 +16,12 @@ function usage () {
   process.exit(0)
 }
 
-var paths = [process.env.HOME + "/.cobre/modules/", "./"]
+var paths = [process.env.HOME + "/.auro/modules/", "./"]
 
 var modMap = {
-  "cobre\x1fio": true,
-  "cobre\x1fbuffer": true,
-  "cobre\x1fsystem": true,
+  "auro\x1fio": true,
+  "auro\x1fbuffer": true,
+  "auro\x1fsystem": true,
 }
 
 var writer = new Writer()
@@ -92,9 +92,9 @@ load_module(modname, true)
 if (mode == "node") {
   var orig = writer.text
   writer = new Writer()
-  writer.write("var Cobre = require('./cobre.js');")
+  writer.write("var Auro = require('./auro.js');")
   writer.append(orig)
-  writer.write("var main = Cobre.$import(", compiler.escape(modname), ").get('main');")
+  writer.write("var main = Auro.$import(", compiler.escape(modname), ").get('main');")
   writer.write("main();")
 }
 

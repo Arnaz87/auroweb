@@ -48,7 +48,7 @@ while (true) {
   if (byte == 0) break;
   magic += String.fromCharCode(byte);
 }
-if (magic !== "Cobre 0.6") fail("Not a Cobre 0.6 module");
+if (magic !== "Auro 0.6") fail("Not an Auro 0.6 module");
 
 var modules = parseN(readInt(), function () {
   var k = readInt();

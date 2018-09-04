@@ -43,24 +43,24 @@ var arraycache = {}
 var arraylistcache = {}
 var strmapcache = {}
 
-var anyModule = new BaseModule({ "any": newType("Cobre.Any") })
+var anyModule = new BaseModule({ "any": newType("Auro.Any") })
 
 var macro_modules = {
-  "cobre\x1fbool": new BaseModule({
-    "bool": newType("Cobre.Bool"),
+  "auro\x1fbool": new BaseModule({
+    "bool": newType("Auro.Bool"),
     "true": macro("true", 0, 1),
     "false": macro("false", 0, 1),
     "not": macro("!$1", 1, 1),
   }),
-  "cobre\x1fsystem": new BaseModule({
-    "println": macro("Cobre.system.println($1)", 1, 0),
-    "error": macro("Cobre.system.error($1)", 1, 0),
-    "exit": macro("Cobre.system.exit()", 0, 0),
-    argc: macro("Cobre.system.argv.length", 0, 1),
-    argv: macro("Cobre.system.argv[$1]", 1, 1),
+  "auro\x1fsystem": new BaseModule({
+    "println": macro("Auro.system.println($1)", 1, 0),
+    "error": macro("Auro.system.error($1)", 1, 0),
+    "exit": macro("Auro.system.exit()", 0, 0),
+    argc: macro("Auro.system.argv.length", 0, 1),
+    argv: macro("Auro.system.argv[$1]", 1, 1),
   }),
-  "cobre\x1fint": new BaseModule({
-    "int": newType("Cobre.Int"),
+  "auro\x1fint": new BaseModule({
+    "int": newType("Auro.Int"),
     "add": macro("($1 + $2)", 2, 1),
     "sub": macro("($1 - $2)", 2, 1),
     "mul": macro("($1 * $2)", 2, 1),
@@ -72,32 +72,32 @@ var macro_modules = {
     "ge": macro("($1 >= $2)", 2, 1),
     "le": macro("($1 <= $2)", 2, 1),
   }),
-  "cobre\x1fstring": new BaseModule({
-    "string": newType("Cobre.String"),
-    "new": macro("Cobre.String.$new($1)", 1, 1),
+  "auro\x1fstring": new BaseModule({
+    "string": newType("Auro.String"),
+    "new": macro("Auro.String.$new($1)", 1, 1),
     "itos": macro("String($1)", 1, 1),
     "concat": macro("($1 + $2)", 2, 1),
     "slice": macro("$1.slice($2, $3)", 3, 1),
     "add": macro("($1 + $2)", 2, 1),
     "eq": macro("($1 == $2)", 2, 1),
     "length": macro("$1.length", 1, 1),
-    "charat": macro("Cobre.String.charat($1, $2)", 2, 2),
+    "charat": macro("Auro.String.charat($1, $2)", 2, 2),
     "newchar": macro("String.fromCharCode($1)", 1, 1),
     "codeof": macro("$1.charCodeAt(0)", 1, 1),
-    "tobuffer": macro("Cobre.String.tobuf($1)", 1, 1),
+    "tobuffer": macro("Auro.String.tobuf($1)", 1, 1),
   }),
-  "cobre\x1fbuffer": new BaseModule({
+  "auro\x1fbuffer": new BaseModule({
     "new": macro("new Uint8Array($1)", 1, 1),
     get: macro("$1[$2]", 2, 1),
     set: macro("$1[$2]=$3", 3, 0),
     size: macro("$1.length", 1, 1),
     readonly: macro("false", 1, 1),
   }),
-  "cobre\x1farray": {build: function (arg) {
+  "auro\x1farray": {build: function (arg) {
     var base = arg.get("0");
     var mod = arraycache[base.id];
     if (mod) return mod;
-    var tp = newType(null, "new Cobre.Array(" + base.name + ")");
+    var tp = newType(null, "new Auro.Array(" + base.name + ")");
     mod = new BaseModule({
       "": tp,
       "new": macro("new Array($2).fill($1)", 2, 1),
@@ -110,7 +110,7 @@ var macro_modules = {
     arraycache[base.id] = mod;
     return mod;
   } },
-  "cobre\x1fany": {
+  "auro\x1fany": {
     build: function (arg) {
       var base = arg.get("0");
       if (!base) return anyModule;
@@ -125,9 +125,9 @@ var macro_modules = {
       if (name == "any") return anyModule.data.any;
     }
   },
-  "cobre\x1fnull": { build: function (arg) {
+  "auro\x1fnull": { build: function (arg) {
     var base = arg.get("0");
-    var tp = newType("new Cobre.Null(" + base.name + ")");
+    var tp = newType("new Auro.Null(" + base.name + ")");
     return new BaseModule({
       "": tp,
       "null": macro("null", 0, 1),
@@ -136,7 +136,7 @@ var macro_modules = {
       "isnull": macro("($1 === null)", 1, 1),
     });
   } },
-  "cobre\x1frecord": { build: function (arg) {
+  "auro\x1frecord": { build: function (arg) {
     var arr = [];
     var names = [];
     var i = 0;
@@ -152,7 +152,7 @@ var macro_modules = {
     var mod = recordcache[id];
     if (mod) return mod;
 
-    var tp = newType(null, "new Cobre.Record([" + names.join(",") + "])");
+    var tp = newType(null, "new Auro.Record([" + names.join(",") + "])");
 
     mod = { "get": function (name) {
       if (name == "new") {
@@ -170,15 +170,15 @@ var macro_modules = {
     recordcache[id] = mod;
     return mod;
   } },
-  "cobre\x1ftypeshell": {build: function (arg) {
+  "auro\x1ftypeshell": {build: function (arg) {
     // Each time it's called, a new type is created
     return new BaseModule({
-      "": newType(null, "new Cobre.Type()"),
+      "": newType(null, "new Auro.Type()"),
       "new": macro("$1", 1, 1),
       "get": macro("$1", 1, 1),
     });
   } },
-  "cobre\x1ffunction": { build: function (arg) {
+  "auro\x1ffunction": { build: function (arg) {
     var inlist = [];
     var innames = [];
     var outlist = [];
@@ -207,7 +207,7 @@ var macro_modules = {
     var mod = recordcache[id];
     if (mod) return mod;
 
-    var tp = newType(null, "new Cobre.Function([" + innames.join(",") + "], [" + outnames.join(",") + "])");
+    var tp = newType(null, "new Auro.Function([" + innames.join(",") + "], [" + outnames.join(",") + "])");
 
     var argnames = alphabet.slice(0, inlist.length)
 
@@ -236,7 +236,7 @@ var macro_modules = {
         }})
       } },
       closure: {
-        name: "Cobre.Closure",
+        name: "Auro.Closure",
         build: function (args) {
           var fn = args.get("0")
 
@@ -255,12 +255,12 @@ var macro_modules = {
     recordcache[id] = mod;
     return mod;
   } },
-  "cobre\x1futils\x1fstringmap": {build: function (arg) {
+  "auro\x1futils\x1fstringmap": {build: function (arg) {
     var base = arg.get("0");
     var mod = strmapcache[base.id];
     if (mod) return mod;
-    var tp = newType(null, "new Cobre.StringMap(" + base.name + ")");
-    var itertp = newType(null, "new Cobre.StringMap.Iterator(" + base.name + ")")
+    var tp = newType(null, "new Auro.StringMap(" + base.name + ")");
+    var itertp = newType(null, "new Auro.StringMap.Iterator(" + base.name + ")")
     mod = new BaseModule({
       "": tp,
       "iterator": itertp,
@@ -268,17 +268,17 @@ var macro_modules = {
       "get": macro("$1[$2]", 2, 1),
       "set": macro("$1[$2]=$3", 3, 0),
       "remove": macro("delete $1[$2]", 3, 0),
-      "new\x1diterator": macro("Cobre.StringMap.Iterator.$new($1)", 1, 1),
+      "new\x1diterator": macro("Auro.StringMap.Iterator.$new($1)", 1, 1),
       "next\x1diterator": macro("$1.next()", 1, 1),
     })
     strmapcache[base.id] = mod;
     return mod;
   } },
-  "cobre\x1futils\x1farraylist": {build: function (arg) {
+  "auro\x1futils\x1farraylist": {build: function (arg) {
     var base = arg.get("0");
     var mod = arraylistcache[base.id];
     if (mod) return mod;
-    var tp = newType(null, "new Cobre.ArrayList(" + base.name + ")");
+    var tp = newType(null, "new Auro.ArrayList(" + base.name + ")");
     mod = new BaseModule({
       "": tp,
       "new": macro("[]", 0, 1),
