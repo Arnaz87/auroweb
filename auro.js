@@ -103,6 +103,13 @@ Auro.Bool = {
   unwrap: function (any) { return any },
   test: function (any) { return typeof any === "boolean" }
 }
+Auro.Float = new Auro.Type(null, "Float")
+Auro.Float.isInfinite = function (n) { return n == Infinity || n == -Infinity }
+Auro.Float.decimal = function (n, e) {
+  while (e-- > 0) { n *= 10 }
+  while (e++ < 0) { n /= 10 }
+  return n
+}
 
 Auro.Null = function (base) {
   Auro.Type.call(this, null, "auro.null")
