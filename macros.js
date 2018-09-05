@@ -188,7 +188,7 @@ var macro_modules = {
       "null": macro("null", 0, 1),
       "new": macro("$1", 1, 1),
       "get": macro("$1", 1, 1),
-      "isnull": macro("($1 === null)", 1, 1),
+      "isnull": macro("Auro.Null.isNull($1)", 1, 1),
     });
   } },
   "auro\x1frecord": { build: function (arg) {

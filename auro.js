@@ -88,7 +88,7 @@ function teq (a, b) {
 var typeCount = 0
 Auro.Type = function (base, name, equals) {
   this.wrap = function (val) { return {type: this, value: val} }
-  this.test = function (val) { return val.type && teq(val.type, this) }
+  this.test = function (val) { return val && val.type && teq(val.type, this) }
   this.unwrap = function (val) { return val.value }
 }
 
@@ -119,6 +119,8 @@ Auro.Null = function (base) {
     return t.is_null && teq(base, t.base)
   }
 }
+Auro.Null.isNull = function (x) { return (typeof x === "undefined") ? true : x === null }
+
 Auro.Array = function (base) {
   Auro.Type.call(this, null, "auro.array")
   this.is_array = true
