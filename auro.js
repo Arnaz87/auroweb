@@ -111,6 +111,12 @@ Auro.Float.decimal = function (n, e) {
   return n
 }
 
+Auro.Buffer = {
+  wrap: function (x) { return x },
+  unwrap: function (x) { return x },
+  test: function (any) { return any instanceof Uint8Array }
+}
+
 Auro.Null = function (base) {
   Auro.Type.call(this, null, "auro.null")
   this.is_null = true

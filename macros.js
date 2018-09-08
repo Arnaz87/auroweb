@@ -76,6 +76,15 @@ var macro_modules = {
     "gz": macro("($1 > 0)", 1, 1),
     "nz": macro("($1 != 0)", 1, 1),
   }),
+  "auro\x1fint\x1fbit": new BaseModule({
+    "not": macro("~$1", 1, 1),
+    "and": macro("($1 & $2)", 2, 1),
+    "or": macro("($1 | $2)", 2, 1),
+    "xor": macro("($1 ^ $2)", 2, 1),
+    "eq": macro("~($1 ^ $2)", 2, 1),
+    "shl": macro("($1 << $2)", 2, 1),
+    "shr": macro("($1 >> $2)", 2, 1),
+  }),
   "auro\x1ffloat": new BaseModule({
     "float": newType("Auro.Float"),
     "neg": macro("-($1)", 1, 1),
@@ -142,6 +151,7 @@ var macro_modules = {
     "atan2": macro("Math.atan2($1, $2)", 2, 1),
   }),
   "auro\x1fbuffer": new BaseModule({
+    buffer: newType("Auro.Buffer"),
     "new": macro("new Uint8Array($1)", 1, 1),
     get: macro("$1[$2]", 2, 1),
     set: macro("$1[$2]=$3", 3, 0),
