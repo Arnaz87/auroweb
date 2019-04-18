@@ -11,11 +11,11 @@ function newType (name, line) {
   return tp
 }
 
-function BaseModule (data) {
+function BaseModule (modname, data) {
   this.data = data
   this.get = function (name) {
     var val = data[name]
-    if (!val) throw new Error(name + " not found in module")
+    if (!val) throw new Error(name + " not found in " + modname)
     return val
   }
 }
@@ -43,23 +43,23 @@ var arraycache = {}
 var arraylistcache = {}
 var strmapcache = {}
 
-var anyModule = new BaseModule({ "any": newType("Auro.Any") })
+var anyModule = new BaseModule("auro.any", { "any": newType("Auro.Any") })
 
 var macro_modules = {
-  "auro\x1fbool": new BaseModule({
+  "auro\x1fbool": new BaseModule("auro.bool", {
     "bool": newType("Auro.Bool"),
     "true": macro("true", 0, 1),
     "false": macro("false", 0, 1),
     "not": macro("!$1", 1, 1),
   }),
-  "auro\x1fsystem": new BaseModule({
+  "auro\x1fsystem": new BaseModule("auro.system", {
     "println": macro("Auro.system.println($1)", 1, 0),
     "error": macro("Auro.system.error($1)", 1, 0),
     "exit": macro("Auro.system.exit()", 0, 0),
     argc: macro("Auro.system.argv.length", 0, 1),
     argv: macro("Auro.system.argv[$1]", 1, 1),
   }),
-  "auro\x1fint": new BaseModule({
+  "auro\x1fint": new BaseModule("auro.int", {
     "int": newType("Auro.Int"),
     "neg": macro("-($1)", 1, 1),
     "add": macro("($1 + $2)", 2, 1),
@@ -76,7 +76,7 @@ var macro_modules = {
     "gz": macro("($1 > 0)", 1, 1),
     "nz": macro("($1 != 0)", 1, 1),
   }),
-  "auro\x1fint\x1fbit": new BaseModule({
+  "auro\x1fint\x1fbit": new BaseModule("auro.int.bit", {
     "not": macro("~$1", 1, 1),
     "and": macro("($1 & $2)", 2, 1),
     "or": macro("($1 | $2)", 2, 1),
@@ -85,7 +85,7 @@ var macro_modules = {
     "shl": macro("($1 << $2)", 2, 1),
     "shr": macro("($1 >> $2)", 2, 1),
   }),
-  "auro\x1ffloat": new BaseModule({
+  "auro\x1ffloat": new BaseModule("auro.float", {
     "float": newType("Auro.Float"),
     "neg": macro("-($1)", 1, 1),
     "add": macro("($1 + $2)", 2, 1),
@@ -108,7 +108,7 @@ var macro_modules = {
     "isnan": macro("isNaN($1)", 0, 1),
     "isinfinity": macro("Auro.Float.isInfinite($1)", 1, 1),
   }),
-  "auro\x1fstring": new BaseModule({
+  "auro\x1fstring": new BaseModule("auro.string", {
     "string": newType("Auro.String"),
     "new": macro("Auro.String.$new($1)", 1, 1),
     "itos": macro("String($1)", 1, 1),
@@ -123,7 +123,7 @@ var macro_modules = {
     "codeof": macro("$1.charCodeAt(0)", 1, 1),
     "tobuffer": macro("Auro.String.tobuf($1)", 1, 1),
   }),
-  "auro\x1fmath": new BaseModule({
+  "auro\x1fmath": new BaseModule("auro.math", {
     "pi": macro("Math.PI", 0, 1),
     "e": macro("Math.E", 0, 1),
     "sqrt2": macro("Math.SQRT2", 0, 1),
@@ -150,7 +150,7 @@ var macro_modules = {
     "tanh": macro("Math.tanh($1)", 1, 1),
     "atan2": macro("Math.atan2($1, $2)", 2, 1),
   }),
-  "auro\x1fbuffer": new BaseModule({
+  "auro\x1fbuffer": new BaseModule("auro.buffer", {
     buffer: newType("Auro.Buffer"),
     "new": macro("new Uint8Array($1)", 1, 1),
     get: macro("$1[$2]", 2, 1),
@@ -163,7 +163,7 @@ var macro_modules = {
     var mod = arraycache[base.id];
     if (mod) return mod;
     var tp = newType(null, "new Auro.Array(" + base.name + ")");
-    mod = new BaseModule({
+    mod = new BaseModule("auro.array", {
       "": tp,
       "new": macro("new Array($2).fill($1)", 2, 1),
       "empty": macro("[]", 0, 1),
@@ -193,7 +193,7 @@ var macro_modules = {
   "auro\x1fnull": { build: function (arg) {
     var base = arg.get("0");
     var tp = newType("new Auro.Null(" + base.name + ")");
-    return new BaseModule({
+    return new BaseModule("auro.null", {
       "": tp,
       "null": macro("null", 0, 1),
       "new": macro("$1", 1, 1),
@@ -237,7 +237,7 @@ var macro_modules = {
   } },
   "auro\x1ftypeshell": {build: function (arg) {
     // Each time it's called, a new type is created
-    return new BaseModule({
+    return new BaseModule("auro.typeshell", {
       "": newType(null, "new Auro.Type()"),
       "new": macro("$1", 1, 1),
       "get": macro("$1", 1, 1),
@@ -282,7 +282,7 @@ var macro_modules = {
       return "(function (" + argnames.join(",") + ") {return " + fn.use(args) + "})"
     }
 
-    mod = new BaseModule({
+    mod = new BaseModule("auro.function", {
       "": tp,
       "apply": {
         ins: inlist,
@@ -294,7 +294,7 @@ var macro_modules = {
       "new": { build: function (args) {
         var fn = args.get("0")
 
-        return new BaseModule({"": {
+        return new BaseModule("function", {"": {
           ins: inlist,
           outs: outlist,
           use: function (fargs) { return fn.name }
@@ -305,7 +305,7 @@ var macro_modules = {
         build: function (args) {
           var fn = args.get("0")
 
-          return new BaseModule({"new": {
+          return new BaseModule("closure", {"new": {
             ins: inlist,
             outs: outlist,
             use: function (fargs) {
@@ -326,7 +326,7 @@ var macro_modules = {
     if (mod) return mod;
     var tp = newType(null, "new Auro.StringMap(" + base.name + ")");
     var itertp = newType(null, "new Auro.StringMap.Iterator(" + base.name + ")")
-    mod = new BaseModule({
+    mod = new BaseModule("auro.utils.stringmap", {
       "": tp,
       "iterator": itertp,
       "new": macro("{}", 0, 1),
@@ -344,13 +344,14 @@ var macro_modules = {
     var mod = arraylistcache[base.id];
     if (mod) return mod;
     var tp = newType(null, "new Auro.ArrayList(" + base.name + ")");
-    mod = new BaseModule({
+    mod = new BaseModule("auro.utils.arraylist", {
       "": tp,
       "new": macro("[]", 0, 1),
       "get": macro("$1[$2]", 2, 1),
       "set": macro("$1[$2]=$3", 3, 0),
       "len": macro("$1.length", 1, 1),
       "push": macro("$1.push($2)", 2, 0),
+      "remove": macro("$1.splice($2, 1)", 2, 0),
     });
     arraylistcache[base.id] = mod;
     return mod;
