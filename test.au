@@ -1,1 +1,30 @@
-void main () { println("Hola Mundo!"); }
+module sys = import auro.system;
+int argc () = sys.argc;
+void exit (int) = sys.exit;
+
+int, int div (int num, int denom) {
+  int rem = num, quot = 0;
+  while (rem >= denom) {
+    rem = rem-denom;
+    quot = quot+1;
+  }
+  return quot, rem;
+}
+
+void main () {
+  println("Arguments: " + itos(argc()));
+  int num = 10, denom = 3;
+
+  if (denom == 0) {
+    println("Division by zero!");
+  } else {
+    int quot, rem;
+    quot, rem = div(num, denom);
+    println(
+      itos(num) + "/" + itos(denom)
+      + " = " +
+      itos(quot) + " rem " + itos(rem)
+    );
+  }
+  exit(0);
+}

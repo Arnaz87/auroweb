@@ -1,4 +1,6 @@
 
+var state = require('./state.js')
+
 var types = [];
 
 var alphabet = ("abcdefghijklmnopqrstuvwxyz").split("")
@@ -16,11 +18,60 @@ function BaseModule (modname, data) {
   this.get = function (name) {
     var val = data[name]
     if (!val) throw new Error(name + " not found in " + modname)
+    if (val.compile) state.toCompile.push(val)
     return val
   }
 }
 
-function macro (str, inc, outc) {
+
+
+var auroConsts = {
+  "args": "typeof process == \"undefined\" ? process.argv.slice(1) : []"
+}
+
+function useConsts (consts) {
+  if (!consts) return
+  consts.forEach(function (name) {
+    var val = auroConsts[name]
+    if (typeof val == "string") {
+      var obj = {
+        name: name,
+        code: val,
+        compile: function (w) {
+          w.write("Auro." + this.name + " = " + this.code)
+        }
+      }
+      auroConsts[name] = obj
+      state.toCompile.push(obj)
+    }
+  })
+}
+
+function auroFn (name, inc, outc, code, consts) {
+  useConsts(consts)
+  var fn = {
+    type: "function",
+    code: code,
+    name: "Auro." + name,
+    ins: new Array(inc),
+    outs: new Array(outc),
+    use: function (args) {
+      return this.name + "(" + args.join(", ") + ")"
+    },
+    compile: function (writer) {
+      var args = alphabet.slice(0, inc).join(", ")
+      writer.write("Auro." + name + " = function (" + args + ") {")
+      writer.indent()
+      writer.append(code)
+      writer.dedent()
+      writer.write("}")
+    }
+  }
+  return fn
+}
+
+function macro (str, inc, outc, consts) {
+  useConsts(consts)
   var m = {
     type: "macro", macro: str,
     ins: new Array(inc), outs: new Array(outc),
@@ -53,11 +104,11 @@ var macro_modules = {
     "not": macro("!$1", 1, 1),
   }),
   "auro\x1fsystem": new BaseModule("auro.system", {
-    "println": macro("Auro.system.println($1)", 1, 0),
+    "println": macro("console.log($1)", 1, 0),
     "error": macro("Auro.system.error($1)", 1, 0),
-    "exit": macro("Auro.system.exit()", 0, 0),
-    argc: macro("Auro.system.argv.length", 0, 1),
-    argv: macro("Auro.system.argv[$1]", 1, 1),
+    "exit": auroFn("exit", 1, 0, "if (typeof process !== \"undefined\") process.exit(a)\nelse throw \"Auro Exit with code \" + a"),
+    argc: macro("Auro.args.length", 0, 1, ["args"]),
+    argv: macro("Auro.args[$1]", 1, 1, ["args"]),
   }),
   "auro\x1fint": new BaseModule("auro.int", {
     "int": newType("Auro.Int"),

@@ -3,6 +3,8 @@ const fs = require("fs");
 
 const Writer = require("./writer.js")
 const compiler = require("./compiler.js")
+const macros = require("./macros.js")
+const state = require("./state.js")
 
 function usage () {
   console.log("Usage: " + process.argv0 + " " + argv[1] + " [options] <module>");
@@ -18,31 +20,28 @@ function usage () {
 
 var paths = [process.env.HOME + "/.auro/modules/", "./"]
 
-var modMap = {
-  "auro\x1fio": true,
-  "auro\x1fbuffer": true,
-  "auro\x1fsystem": true,
+var modules = state.modules
+
+for (var name in macros.modules) {
+  modules[name] = macros.modules
 }
 
-var writer = new Writer()
 var include = false
 
-function load_module (name, force) {
-  if (!include && !force || modMap[name]) return
+function load_module (name) {
+  if (modules[name]) return modules[name]
+
   var escaped = name.replace(/\x1f/g, ".")
 
   for (var i = paths.length-1; i >= 0; i--) {
     var filename = paths[i] + escaped
     if (fs.existsSync(filename)) {
-      modMap[name] = true
       var src = fs.readFileSync(filename)
-      var text = compiler.compile(src, name)
-      writer.append(text)
-      return
+      return modules[name] = compiler.getModule(src, name)
     }
   }
 
-  console.warn("module " + name + " not found")
+  throw new Error("module " + name + " not found")
 }
 
 compiler.setModuleLoader(load_module)
@@ -87,16 +86,17 @@ for (var i = 2; i < argv.length; i++) {
 if (!modname) { console.log("No module given"); process.exit(1); }
 
 modname = modname.replace(/\./g, "\x1f")
-load_module(modname, true)
+var main_mod = load_module(modname, true)
+var main_fn = main_mod.get("main")
 
-if (mode == "node") {
-  var orig = writer.text
-  writer = new Writer()
-  writer.write("var Auro = require('./auro.js');")
-  writer.append(orig)
-  writer.write("var main = Auro.$import(", compiler.escape(modname), ").get('main');")
-  writer.write("main();")
-}
+var writer = new Writer()
+writer.write("var Auro = typeof Auro == 'undefined' ? {} : Auro")
+
+state.toCompile.forEach(function (item) {
+  if (item.compile) item.compile(writer)
+})
+
+writer.write(main_fn.use([]))
 
 if (outfile) fs.writeFileSync(outfile, writer.text)
 else process.stdout.write(writer.text)

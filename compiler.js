@@ -3,6 +3,7 @@ const parse = require("./parse.js")
 const Writer = require("./writer.js")
 const Code = require("./code.js")
 const macros = require("./macros.js")
+const state = require("./state.js")
 
 const macro_modules = macros.modules
 const macro = macros.macro
@@ -30,77 +31,41 @@ function escape (_str) {
   return '"' + str + '"'
 }
 
-var reservedNames =  [
-  // https://www.w3schools.com/js/js_reserved.asp
-  "abstract", "await", "arguments", "boolean",
-  "break", "byte", "case", "catch",
-  "char", "class", "const", "continue",
-  "debugger", "default", "delete", "do",
-  "double", "else", "enum", "eval",
-  "export", "extends", "false", "final",
-  "finally", "float", "for", "function",
-  "goto", "if", "implements", "import",
-  "in", "instanceof", "int", "interface",
-  "let", "long", "native", "new",
-  "null", "package", "private", "protected",
-  "public", "return", "short", "static",
-  "super", "switch", "synchronized", "this",
-  "throw", "throws", "transient", "true",
-  "try", "typeof", "var", "void",
-  "volatile", "while", "with", "yield",
-  // Other keywords
-  "undefined", "NaN", "Infinity",
-  // Global Objects
-  "Object", "Function", "Boolean", "Error", "Number", "Math", "String", "Array",
-  // Browser specific
-  "document", "window", "console",
-  // NodeJS specific
-  "global", "require", "module", "process", "Buffer",
-  // Auro
-  "Auro"
-];
-
-
-function compile (data, moduleName) {
-  var parsed = parse(data)
-  var toCompile = []
-  var modcache = {};
-  var sourcemap = {};
-
-  var nameSet = {}
-
-  reservedNames.forEach(function (name) {nameSet[name] = true})
-
-  function findName (orig, modname) {
-    function normalize (name) {
-      name = name.replace(/[^$\w]+/g, "_")
-      if (name.match(/^\d/)) name = "_"+name
-      return name
-    }
-    var name = normalize(orig)
-    if (nameSet[name] && modname)
-      name = normalize(modname + "$" + orig)
-    var i = 1
-    while (nameSet[name]) {
-      name = normalize(orig + "$" + i++)
-    }
-    nameSet[name] = true
+function findName (orig, modname) {
+  function normalize (name) {
+    name = name.replace(/[^$\w]+/g, "_")
+    if (name.match(/^\d/)) name = "_"+name
     return name
   }
-
-  function tryPush (item, itemtype) {
-    var index = toCompile.indexOf(item)
-    if (index < 0) {
-      if (!item.name)
-        item.name = findName((itemtype || "item") + toCompile.length)
-      toCompile.push(item)
-    }
+  var name = normalize(orig)
+  if (state.nameSet[name] && modname)
+    name = normalize(modname + "$" + orig)
+  var i = 1
+  while (state.nameSet[name]) {
+    name = normalize(orig + "$" + i++)
   }
+  state.nameSet[name] = true
+  return name
+}
+
+function tryPush (item, itemtype) {
+  var index = state.toCompile.indexOf(item)
+  if (index < 0) {
+    if (!item.name)
+      item.name = findName((itemtype || "item") + state.toCompile.length)
+    state.toCompile.push(item)
+  }
+  return item
+}
+
+function getModule (data, moduleName) {
+  var parsed = parse(data)
+  var sourcemap = {};
 
   var fnCount = 0, tpCount = 0, modCount = 0, cnsCount = 0
 
   function Item (line, name) {
-    if (!name) name = "item" + toCompile.length
+    if (!name) name = "item" + state.toCompile.length
 
     this.name = name
     this.compile = function (writer) { writer.write("var " + name + " = " + line + ";") }
@@ -112,14 +77,19 @@ function compile (data, moduleName) {
     // For functions
     this.use = function (args) { return name + "(" + args.join(", ") + ")" }
 
-    toCompile.push(this)
+    state.toCompile.push(this)
   }
 
+  var modcache = {};
   function get_module (n) {
     if (modcache[n]) {
       var m = modcache[n]
       tryPush(m)
       return m
+    }
+    function save (mod) {
+      modcache[n] = mod
+      return mod
     }
     var mdata = parsed.modules[n-1]
     if (mdata.type == "build") {
@@ -128,15 +98,13 @@ function compile (data, moduleName) {
       if (!base.build) console.log(base)
       var mod = base.build(arg)
       if (mod instanceof Item) mod.name = findName(base.name)
-      modcache[n] = mod
-      return mod
+      return save(mod)
     }
     if (mdata.type == "import") {
       var mod = macro_modules[mdata.name]
       if (!mod) mod = modLoader(mdata.name)
       if (!mod) mod = new Item("Auro.$import(" + escape(mdata.name) + ")", findName(mdata.name))
-      modcache[n] = mod;
-      return mod
+      return save(mod)
     }
     if (mdata.type == "define") {
       var name = "mod" + ++modCount
@@ -177,18 +145,13 @@ function compile (data, moduleName) {
           writer.write("});")
         }
       }
-      modcache[n] = mod;
-      for (var nm in items) getItem(nm)
-      toCompile.push(mod);
-      return mod;
+      return save(mod)
     }
     if (mdata.type == "use") {
       var mod = get_module(mdata.module)
       var item = mod.get(mdata.item)
       if (!item) throw new Error("Module", mdata.item, "not found in", mod)
-      tryPush(item)
-      modcache[n] = item
-      return item
+      return save(item)
     }
     throw new Error(mdata.type + " modules not yet supported");
   }
@@ -268,7 +231,7 @@ function compile (data, moduleName) {
           f = macro(expr, 0, 1);
         } else {
           var name = "cns" + ++cnsCount;
-          toCompile.push({
+          state.toCompile.push({
             compile: function (writer) {
               writer.write("var " + name + " = Auro.Lazy(function () { return " + expr + "});")
             }
@@ -282,7 +245,7 @@ function compile (data, moduleName) {
     funcache[n] = f;
     if (f instanceof Code) {
       f.build()
-      toCompile.push(f)
+      state.toCompile.push(f)
     }
     return f;
   }
@@ -330,27 +293,9 @@ function compile (data, moduleName) {
     }
   }
 
-  var mod = get_module(1);
-
-  var writer = new Writer()
-  writer.write("Auro.$export(", escape(moduleName), ", function () {")
-  writer.indent()
-
-  while (toCompile.length > 0) {
-    var item = toCompile.shift()
-    if (item.compile) {
-      item.compile(writer)
-    }
-  }
-
-  writer.write("return ", mod.name, ";")
-
-  writer.dedent()
-  writer.write("});")
-
-  return writer.text
+  return get_module(1)
 }
 
 exports.setModuleLoader = function (fn) { modLoader = fn }
 exports.escape = escape
-exports.compile = compile
+exports.getModule = getModule
