@@ -7,8 +7,8 @@ var alphabet = ("abcdefghijklmnopqrstuvwxyz").split("")
 
 function nativeType (name, is_class) {
   var test = is_class ?
-    "$1 instanceof " + name :
-    "typeof $1 === '" + name + "'"
+    "#1 instanceof " + name :
+    "typeof #1 === '" + name + "'"
 
   var tp = {
     name: name,
@@ -24,9 +24,9 @@ function wrapperType (name) {
   var tp = {
     name: name,
     id: type_id++,
-    wrap: macro("new " + name + "($1)", 1, 1),
-    unwrap: macro("$1.val", 1, 1),
-    test: macro("$1 instanceof " + name, 1, 1),
+    wrap: macro("new " + name + "(#1)", 1, 1),
+    unwrap: macro("#1.val", 1, 1),
+    test: macro("#1 instanceof " + name, 1, 1),
     compile: function (w) {
       w.write("var " + name + " = function (val) { this.val = val; }")
     }
@@ -128,7 +128,7 @@ function macro (str, inc, outc, consts) {
     use: function (args) {
       var expr = this.macro;
       for (var i = 0; i < this.ins.length; i++) {
-        var patt = new RegExp("\\$" + (i+1), "g");
+        var patt = new RegExp("#" + (i+1), "g");
         expr = expr.replace(patt, args[i]);
       }
       return expr;
@@ -139,7 +139,7 @@ function macro (str, inc, outc, consts) {
   return m
 }
 
-macro.id = macro("$1", 1, 1)
+macro.id = macro("#1", 1, 1)
 
 var recordcache = {}
 var arraylistcache = {}
@@ -149,63 +149,63 @@ var macro_modules = {
     "bool": nativeType("Boolean"),
     "true": macro("true", 0, 1),
     "false": macro("false", 0, 1),
-    "not": macro("!$1", 1, 1),
+    "not": macro("!#1", 1, 1),
   }),
   "auro\x1fsystem": new BaseModule("auro.system", {
-    "println": macro("console.log($1)", 1, 0),
-    "error": macro("Auro.system.error($1)", 1, 0),
+    "println": macro("console.log(#1)", 1, 0),
+    "error": macro("Auro.system.error(#1)", 1, 0),
     "exit": auroFn("exit", ["code"], 0, "if (typeof process !== \"undefined\") process.exit(code)\nelse throw \"Auro Exit with code \" + code"),
     argc: macro("Auro.args.length", 0, 1, ["args"]),
-    argv: macro("Auro.args[$1]", 1, 1, ["args"]),
+    argv: macro("Auro.args[#1]", 1, 1, ["args"]),
   }),
   "auro\x1fint": new BaseModule("auro.int", {
     "int": wrapperType("Integer"),
-    "neg": macro("-($1)", 1, 1),
-    "add": macro("($1 + $2)", 2, 1),
-    "sub": macro("($1 - $2)", 2, 1),
-    "mul": macro("($1 * $2)", 2, 1),
-    "div": macro("(($1 / $2) | 0)", 2, 1),
-    "mod": macro("($1 % $2)", 2, 1),
-    "eq": macro("($1 == $2)", 2, 1),
-    "ne": macro("($1 != $2)", 2, 1),
-    "gt": macro("($1 > $2)", 2, 1),
-    "lt": macro("($1 < $2)", 2, 1),
-    "ge": macro("($1 >= $2)", 2, 1),
-    "le": macro("($1 <= $2)", 2, 1),
-    "gz": macro("($1 > 0)", 1, 1),
-    "nz": macro("($1 != 0)", 1, 1),
+    "neg": macro("-(#1)", 1, 1),
+    "add": macro("(#1 + #2)", 2, 1),
+    "sub": macro("(#1 - #2)", 2, 1),
+    "mul": macro("(#1 * #2)", 2, 1),
+    "div": macro("((#1 / #2) | 0)", 2, 1),
+    "mod": macro("(#1 % #2)", 2, 1),
+    "eq": macro("(#1 == #2)", 2, 1),
+    "ne": macro("(#1 != #2)", 2, 1),
+    "gt": macro("(#1 > #2)", 2, 1),
+    "lt": macro("(#1 < #2)", 2, 1),
+    "ge": macro("(#1 >= #2)", 2, 1),
+    "le": macro("(#1 <= #2)", 2, 1),
+    "gz": macro("(#1 > 0)", 1, 1),
+    "nz": macro("(#1 != 0)", 1, 1),
   }),
   "auro\x1fint\x1fbit": new BaseModule("auro.int.bit", {
-    "not": macro("~$1", 1, 1),
-    "and": macro("($1 & $2)", 2, 1),
-    "or": macro("($1 | $2)", 2, 1),
-    "xor": macro("($1 ^ $2)", 2, 1),
-    "eq": macro("~($1 ^ $2)", 2, 1),
-    "shl": macro("($1 << $2)", 2, 1),
-    "shr": macro("($1 >> $2)", 2, 1),
+    "not": macro("~#1", 1, 1),
+    "and": macro("(#1 & #2)", 2, 1),
+    "or": macro("(#1 | #2)", 2, 1),
+    "xor": macro("(#1 ^ #2)", 2, 1),
+    "eq": macro("~(#1 ^ #2)", 2, 1),
+    "shl": macro("(#1 << #2)", 2, 1),
+    "shr": macro("(#1 >> #2)", 2, 1),
   }),
   "auro\x1ffloat": new BaseModule("auro.float", {
     "float": nativeType("Number"),
-    "neg": macro("-($1)", 1, 1),
-    "add": macro("($1 + $2)", 2, 1),
-    "sub": macro("($1 - $2)", 2, 1),
-    "mul": macro("($1 * $2)", 2, 1),
-    "div": macro("($1 / $2)", 2, 1),
-    "eq": macro("($1 == $2)", 2, 1),
-    "ne": macro("($1 != $2)", 2, 1),
-    "gt": macro("($1 > $2)", 2, 1),
-    "lt": macro("($1 < $2)", 2, 1),
-    "ge": macro("($1 >= $2)", 2, 1),
-    "le": macro("($1 <= $2)", 2, 1),
-    "gz": macro("($1 > 0)", 1, 1),
-    "nz": macro("($1 != 0)", 1, 1),
-    "itof": macro("$1", 1, 1),
-    "ftoi": macro("$1", 1, 1),
-    "decimal": macro("Auro.Float.decimal($1, $2)", 2, 1),
+    "neg": macro("-(#1)", 1, 1),
+    "add": macro("(#1 + #2)", 2, 1),
+    "sub": macro("(#1 - #2)", 2, 1),
+    "mul": macro("(#1 * #2)", 2, 1),
+    "div": macro("(#1 / #2)", 2, 1),
+    "eq": macro("(#1 == #2)", 2, 1),
+    "ne": macro("(#1 != #2)", 2, 1),
+    "gt": macro("(#1 > #2)", 2, 1),
+    "lt": macro("(#1 < #2)", 2, 1),
+    "ge": macro("(#1 >= #2)", 2, 1),
+    "le": macro("(#1 <= #2)", 2, 1),
+    "gz": macro("(#1 > 0)", 1, 1),
+    "nz": macro("(#1 != 0)", 1, 1),
+    "itof": macro("#1", 1, 1),
+    "ftoi": macro("#1", 1, 1),
+    "decimal": macro("Auro.Float.decimal(#1, #2)", 2, 1),
     "nan": macro("NaN", 0, 1),
     "infinity": macro("Infinity", 0, 1),
-    "isnan": macro("isNaN($1)", 0, 1),
-    "isinfinity": macro("Auro.Float.isInfinite($1)", 1, 1),
+    "isnan": macro("isNaN(#1)", 0, 1),
+    "isinfinity": macro("Auro.Float.isInfinite(#1)", 1, 1),
   }),
   "auro\x1fstring": new BaseModule("auro.string", {
     "string": nativeType("string"),
@@ -215,16 +215,16 @@ var macro_modules = {
       "\nfor (var i = 0; i < buf.length; i++)" +
       "\n  str += String.fromCharCode(buf[i])" +
       "\nreturn decodeURIComponent(escape(str))" ),
-    "itos": macro("String($1)", 1, 1),
-    "ftos": macro("String($1)", 1, 1),
-    "concat": macro("($1 + $2)", 2, 1),
-    "slice": macro("$1.slice($2, $3)", 3, 1),
-    "add": macro("($1 + $2)", 2, 1),
-    "eq": macro("($1 == $2)", 2, 1),
-    "length": macro("$1.length", 1, 1),
+    "itos": macro("String(#1)", 1, 1),
+    "ftos": macro("String(#1)", 1, 1),
+    "concat": macro("(#1 + #2)", 2, 1),
+    "slice": macro("#1.slice(#2, #3)", 3, 1),
+    "add": macro("(#1 + #2)", 2, 1),
+    "eq": macro("(#1 == #2)", 2, 1),
+    "length": macro("#1.length", 1, 1),
     "charat": auroFn("charat", ["str", "i"], 2, "return [str[i], i+1]"),
-    "newchar": macro("String.fromCharCode($1)", 1, 1),
-    "codeof": macro("$1.charCodeAt(0)", 1, 1),
+    "newchar": macro("String.fromCharCode(#1)", 1, 1),
+    "codeof": macro("#1.charCodeAt(0)", 1, 1),
     "tobuffer": auroFn("str_tobuf", ["str"], 1,
       "str = unescape(encodeURIComponent(str))" +
       "\nvar buf = new Uint8Array(str.length)" +
@@ -236,35 +236,35 @@ var macro_modules = {
     "pi": macro("Math.PI", 0, 1),
     "e": macro("Math.E", 0, 1),
     "sqrt2": macro("Math.SQRT2", 0, 1),
-    "abs": macro("Math.abs($1)", 1, 1),
-    "ceil": macro("Math.ceil($1)", 1, 1),
-    "floor": macro("Math.floor($1)", 1, 1),
-    "round": macro("Math.round($1)", 1, 1),
-    "trunc": macro("Math.trunc($1)", 1, 1),
-    "ln": macro("Math.log($1)", 1, 1),
-    "exp": macro("Math.exp($1)", 1, 1),
-    "sqrt": macro("Math.sqrt($1)", 1, 1),
-    "cbrt": macro("Math.cbrt($1)", 1, 1),
-    "pow": macro("Math.pow($1, $2)", 2, 1),
-    "log": macro("(Math.log($1) / Math.log($2))", 2, 1),
-    "mod": macro("($1 % $2)", 2, 1),
-    "sin": macro("Math.sin($1)", 1, 1),
-    "cos": macro("Math.cos($1)", 1, 1),
-    "tan": macro("Math.tan($1)", 1, 1),
-    "asin": macro("Math.asin($1)", 1, 1),
-    "acos": macro("Math.acos($1)", 1, 1),
-    "atan": macro("Math.atan($1)", 1, 1),
-    "sinh": macro("Math.sinh($1)", 1, 1),
-    "cosh": macro("Math.cosh($1)", 1, 1),
-    "tanh": macro("Math.tanh($1)", 1, 1),
-    "atan2": macro("Math.atan2($1, $2)", 2, 1),
+    "abs": macro("Math.abs(#1)", 1, 1),
+    "ceil": macro("Math.ceil(#1)", 1, 1),
+    "floor": macro("Math.floor(#1)", 1, 1),
+    "round": macro("Math.round(#1)", 1, 1),
+    "trunc": macro("Math.trunc(#1)", 1, 1),
+    "ln": macro("Math.log(#1)", 1, 1),
+    "exp": macro("Math.exp(#1)", 1, 1),
+    "sqrt": macro("Math.sqrt(#1)", 1, 1),
+    "cbrt": macro("Math.cbrt(#1)", 1, 1),
+    "pow": macro("Math.pow(#1, #2)", 2, 1),
+    "log": macro("(Math.log(#1) / Math.log(#2))", 2, 1),
+    "mod": macro("(#1 % #2)", 2, 1),
+    "sin": macro("Math.sin(#1)", 1, 1),
+    "cos": macro("Math.cos(#1)", 1, 1),
+    "tan": macro("Math.tan(#1)", 1, 1),
+    "asin": macro("Math.asin(#1)", 1, 1),
+    "acos": macro("Math.acos(#1)", 1, 1),
+    "atan": macro("Math.atan(#1)", 1, 1),
+    "sinh": macro("Math.sinh(#1)", 1, 1),
+    "cosh": macro("Math.cosh(#1)", 1, 1),
+    "tanh": macro("Math.tanh(#1)", 1, 1),
+    "atan2": macro("Math.atan2(#1, #2)", 2, 1),
   }),
   "auro\x1fbuffer": new BaseModule("auro.buffer", {
     buffer: nativeType("Uint8Array"),
-    "new": macro("new Uint8Array($1)", 1, 1),
-    get: macro("$1[$2]", 2, 1),
-    set: macro("$1[$2]=$3", 3, 0),
-    size: macro("$1.length", 1, 1),
+    "new": macro("new Uint8Array(#1)", 1, 1),
+    get: macro("#1[#2]", 2, 1),
+    set: macro("#1[#2]=#3", 3, 0),
+    size: macro("#1.length", 1, 1),
     readonly: macro("false", 1, 1),
   }),
   "auro\x1fio": new BaseModule("auro.system", {
@@ -289,12 +289,12 @@ var macro_modules = {
       var tp = wrapperType("Array_" + base.name);
       return  new BaseModule("auro.array", {
         "": tp,
-        "new": macro("new Array($2).fill($1)", 2, 1),
+        "new": macro("new Array(#2).fill(#1)", 2, 1),
         "empty": macro("[]", 0, 1),
-        "get": macro("$1[$2]", 2, 1),
-        "set": macro("$1[$2] = $3", 3, 0),
-        "len": macro("$1.length", 1, 1),
-        "push": macro("$1.push($2)", 2, 0),
+        "get": macro("#1[#2]", 2, 1),
+        "set": macro("#1[#2] = #3", 3, 0),
+        "len": macro("#1.length", 1, 1),
+        "push": macro("#1.push(#2)", 2, 0),
       });
     }
   }),
@@ -313,7 +313,7 @@ var macro_modules = {
       return { "get": function (name) {
         if (name == "new") return base.wrap || macro.id
         if (name == "get") return base.unwrap  || macro.id
-        if (name == "test") return base.test || macro("$1 instanceof " + base.name)
+        if (name == "test") return base.test || macro("#1 instanceof " + base.name)
       } };
     },
     get: function (name) {
@@ -328,7 +328,7 @@ var macro_modules = {
       "null": macro("null", 0, 1),
       "new": macro.id,
       "get": macro.id,
-      "isnull": macro("$1 === null", 1, 1),
+      "isnull": macro("#1 === null", 1, 1),
     });
   } }),
   "auro\x1frecord": paramModule({
@@ -366,15 +366,15 @@ var macro_modules = {
       return { get: function (name) {
         if (name == "new") {
           var args = []
-          for (var j = 1; j <= count; j++) args.push("$" + j)
+          for (var j = 1; j <= count; j++) args.push("#" + j)
           return macro("new " + tname + "(" + args.join(", ") + ")", count, 1)
         }
         var a = name.slice(0, 3);
         var n = name.slice(3);
         var l = alphabet[n]
         if (a == "") return tp;
-        if (a == "get") return macro("$1." + l, 1, 1);
-        if (a == "set") return macro("$1." + l + " = $2", 2, 0);
+        if (a == "get") return macro("#1." + l, 1, 1);
+        if (a == "set") return macro("#1." + l + " = #2", 2, 0);
       } };
     }
   }),
@@ -497,11 +497,11 @@ var macro_modules = {
         "": tp,
         "iterator": itertp,
         "new": macro("{}", 0, 1),
-        "get": macro("$1[$2]", 2, 1),
-        "set": macro("$1[$2]=$3", 3, 0),
-        "remove": macro("delete $1[$2]", 3, 0),
-        "new\x1diterator": macro("new " + itertp.name + "($1)", 1, 1),
-        "next\x1diterator": macro("$1.next()", 1, 2),
+        "get": macro("#1[#2]", 2, 1),
+        "set": macro("#1[#2]=#3", 3, 0),
+        "remove": macro("delete #1[#2]", 3, 0),
+        "new\x1diterator": macro("new " + itertp.name + "(#1)", 1, 1),
+        "next\x1diterator": macro("#1.next()", 1, 2),
       })
     }
   }),
@@ -514,11 +514,11 @@ var macro_modules = {
       return new BaseModule("auro.utils.arraylist", {
         "": tp,
         "new": macro("[]", 0, 1),
-        "get": macro("$1[$2]", 2, 1),
-        "set": macro("$1[$2]=$3", 3, 0),
-        "len": macro("$1.length", 1, 1),
-        "push": macro("$1.push($2)", 2, 0),
-        "remove": macro("$1.splice($2, 1)", 2, 0),
+        "get": macro("#1[#2]", 2, 1),
+        "set": macro("#1[#2]=#3", 3, 0),
+        "len": macro("#1.length", 1, 1),
+        "push": macro("#1.push(#2)", 2, 0),
+        "remove": macro("#1.splice(#2, 1)", 2, 0),
       });
     }
   }),
