@@ -72,10 +72,6 @@ function getModule (data, moduleName) {
       tryPush(m)
       return m
     }
-    function save (mod) {
-      modcache[n] = mod
-      return mod
-    }
     var mdata = parsed.modules[n-1]
     if (mdata.type == "build") {
       var base = get_module(mdata.base)
@@ -83,13 +79,13 @@ function getModule (data, moduleName) {
       if (!base.build) console.log(base)
       var mod = base.build(arg)
       if (mod instanceof Item) mod.name = findName(base.name)
-      return save(mod)
+      return mod
     }
     if (mdata.type == "import") {
       var mod = macro_modules[mdata.name]
       if (!mod) mod = modLoader(mdata.name)
       if (!mod) mod = new Item("Auro.$import(" + escape(mdata.name) + ")", findName(mdata.name))
-      return save(mod)
+      return mod
     }
     if (mdata.type == "define") {
       var name = "mod" + ++modCount
@@ -130,13 +126,13 @@ function getModule (data, moduleName) {
           writer.write("});")
         }
       }
-      return save(mod)
+      return mod
     }
     if (mdata.type == "use") {
       var mod = get_module(mdata.module)
       var item = mod.get(mdata.item)
       if (!item) throw new Error("Module", mdata.item, "not found in", mod)
-      return save(item)
+      return item
     }
     throw new Error(mdata.type + " modules not yet supported");
   }
