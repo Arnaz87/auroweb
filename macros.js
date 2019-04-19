@@ -67,7 +67,7 @@ function paramModule (mod) {
 
 
 var auroConsts = {
-  args: "typeof process == \"undefined\" ? process.argv.slice(1) : []",
+  args: "typeof process == \"undefined\" ? [] : process.argv.slice(1)",
   require: "function (name) {" +
     "\n  if (typeof require !== 'function') return null" +
     "\n  try { return require(name) }" +
@@ -272,7 +272,7 @@ var macro_modules = {
     w: macro("'w'", 0, 1),
     a: macro("'a'", 0, 1),
     open: auroFn("io_open", ["path", "mode"], 1, "return {f: Auro.fs.openSync(path, mode), size: Auro.fs.statSync(path).size, pos: 0}", ["require", "fs"]),
-    close: auroFn("io_close", ["file"], 1, "Auro.fs.closeSync(a.f)", ["require", "fs"]),
+    close: auroFn("io_close", ["file"], 1, "Auro.fs.closeSync(file.f)", ["require", "fs"]),
     read: auroFn("io_read", ["file", "size"], 1,
       "var buf = new Uint8Array(size)" +
       "\nvar redd = Auro.fs.readSync(file.f, buf, 0, size, file.pos)" +
