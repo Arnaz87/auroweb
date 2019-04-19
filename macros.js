@@ -5,10 +5,45 @@ var types = [];
 
 var alphabet = ("abcdefghijklmnopqrstuvwxyz").split("")
 
+function nativeType (name, is_class) {
+  var test = is_class ?
+    "$1 instanceof " + name :
+    "typeof $1 === '" + name + "'"
+
+  var tp = {
+    name: name,
+    wrap: macro.id,
+    unwrap: macro.id,
+    test: macro(test, 1, 1)
+  }
+  return tp
+}
+
+function wrapperType (name) {
+  name = "Auro." + name
+
+  var tp = {
+    name: name,
+    wrap: macro("new " + name + "($1)", 1, 1),
+    unwrap: macro("$1.val", 1, 1),
+    test: macro("$1 instanceof " + name, 1, 1),
+    compile: function (w) {
+      w.write(name + " = function (val) { this.val = val; }")
+    }
+  }
+
+  state.toCompile(tp)
+  return tp
+}
+
 function newType (name, line) {
-  var tp = {name: name, id: types.length, compile: function (writer) {
-    if (line) writer.write("var " + this.name + " = " + line + ";");
-  }};
+  var tp = {
+    name: name,
+    id: types.length,
+    compile: function (writer) {
+      if (line) writer.write("var " + this.name + " = " + line + ";");
+    }
+  };
   types.push(tp)
   return tp
 }
@@ -26,7 +61,17 @@ function BaseModule (modname, data) {
 
 
 var auroConsts = {
-  "args": "typeof process == \"undefined\" ? process.argv.slice(1) : []"
+  args: "typeof process == \"undefined\" ? process.argv.slice(1) : []",
+  require: "function (name) {" +
+    "\n  if (typeof require !== 'function') return null" +
+    "\n  try { return require(name) }" +
+    "\n  catch (e) {" +
+    "\n  if (e.code === 'MODULE_NOT_FOUND') return null" +
+    "\n    else throw e" +
+    "\n  }" +
+    "\n}",
+  fs: "Auro.require('fs')",
+  record: "function ()"
 }
 
 function useConsts (consts) {
@@ -34,33 +79,32 @@ function useConsts (consts) {
   consts.forEach(function (name) {
     var val = auroConsts[name]
     if (typeof val == "string") {
-      var obj = {
+      val = {
         name: name,
         code: val,
         compile: function (w) {
-          w.write("Auro." + this.name + " = " + this.code)
+          w.write("Auro." + this.name + " = " + this.code + ";")
         }
       }
-      auroConsts[name] = obj
-      state.toCompile.push(obj)
+      auroConsts[name] = val
+      state.toCompile.push(val)
     }
   })
 }
 
-function auroFn (name, inc, outc, code, consts) {
+function auroFn (name, ins, outc, code, consts) {
   useConsts(consts)
   var fn = {
     type: "function",
     code: code,
     name: "Auro." + name,
-    ins: new Array(inc),
+    ins: new Array(ins.length),
     outs: new Array(outc),
     use: function (args) {
       return this.name + "(" + args.join(", ") + ")"
     },
     compile: function (writer) {
-      var args = alphabet.slice(0, inc).join(", ")
-      writer.write("Auro." + name + " = function (" + args + ") {")
+      writer.write("Auro." + name + " = function (" + ins.join(", ") + ") {")
       writer.indent()
       writer.append(code)
       writer.dedent()
@@ -89,12 +133,16 @@ function macro (str, inc, outc, consts) {
   return m
 }
 
+macro.id = macro("$1", 1, 1)
+
 var recordcache = {}
 var arraycache = {}
 var arraylistcache = {}
 var strmapcache = {}
 
 var anyModule = new BaseModule("auro.any", { "any": newType("Auro.Any") })
+
+var record_count = 0
 
 var macro_modules = {
   "auro\x1fbool": new BaseModule("auro.bool", {
@@ -106,7 +154,7 @@ var macro_modules = {
   "auro\x1fsystem": new BaseModule("auro.system", {
     "println": macro("console.log($1)", 1, 0),
     "error": macro("Auro.system.error($1)", 1, 0),
-    "exit": auroFn("exit", 1, 0, "if (typeof process !== \"undefined\") process.exit(a)\nelse throw \"Auro Exit with code \" + a"),
+    "exit": auroFn("exit", ["code"], 0, "if (typeof process !== \"undefined\") process.exit(code)\nelse throw \"Auro Exit with code \" + code"),
     argc: macro("Auro.args.length", 0, 1, ["args"]),
     argv: macro("Auro.args[$1]", 1, 1, ["args"]),
   }),
@@ -160,7 +208,7 @@ var macro_modules = {
     "isinfinity": macro("Auro.Float.isInfinite($1)", 1, 1),
   }),
   "auro\x1fstring": new BaseModule("auro.string", {
-    "string": newType("Auro.String"),
+    "string": nativeType("string"),
     "new": macro("Auro.String.$new($1)", 1, 1),
     "itos": macro("String($1)", 1, 1),
     "ftos": macro("String($1)", 1, 1),
@@ -209,6 +257,22 @@ var macro_modules = {
     size: macro("$1.length", 1, 1),
     readonly: macro("false", 1, 1),
   }),
+  "auro\x1fio": new BaseModule("auro.system", {
+    r: macro("'r'", 0, 1),
+    w: macro("'w'", 0, 1),
+    a: macro("'a'", 0, 1),
+    open: auroFn("io_open", ["path", "mode"], 1, "return {f: Auro.fs.openSync(path, mode), size: Auro.fs.statSync(path).size, pos: 0}", ["require", "fs"]),
+    close: auroFn("io_close", ["file"], 1, "Auro.fs.closeSync(a.f)", ["require", "fs"]),
+    read: auroFn("io_read", ["file", "size"], 1,
+      "var buf = new Uint8Array(size)" +
+      "\nvar redd = Auro.fs.readSync(file.f, buf, 0, size, file.pos)" +
+      "\nfile.pos += redd" +
+      "\nreturn buf.slice(0, redd)", ["require", "fs"]),
+    write: auroFn("io_write", ["file", "buf"], 1,
+      "var written = Auro.fs.writeSync(file.f, buf, 0, buf.length, file.pos)" +
+      "\nfile.pos += written", ["require", "fs"]),
+    eof: auroFn("io_eof", ["file"], 1, "return file.pos >= file.size"),
+  }),
   "auro\x1farray": {build: function (arg) {
     var base = arg.get("0");
     var mod = arraycache[base.id];
@@ -219,7 +283,7 @@ var macro_modules = {
       "new": macro("new Array($2).fill($1)", 2, 1),
       "empty": macro("[]", 0, 1),
       "get": macro("$1[$2]", 2, 1),
-      "set": macro("$1[$2]=$3", 3, 0),
+      "set": macro("$1[$2] = $3", 3, 0),
       "len": macro("$1.length", 1, 1),
       "push": macro("$1.push($2)", 2, 0),
     });
@@ -232,9 +296,9 @@ var macro_modules = {
       if (!base) return anyModule;
       var id = base.id;
       return { "get": function (name) {
-        if (name == "new") return macro(base.name + ".wrap($1)", 1, 1);
-        if (name == "test") return macro(base.name + ".test($1)", 1, 1);
-        if (name == "get") return macro(base.name + ".unwrap($1)", 1, 1);
+        if (name == "new") return base.wrap
+        if (name == "test") return base.test
+        if (name == "get") return base.unwrap
       } };
     },
     get: function (name) {
@@ -255,32 +319,52 @@ var macro_modules = {
   "auro\x1frecord": { build: function (arg) {
     var arr = [];
     var names = [];
-    var i = 0;
+    var count = 0;
     while (true) {
-      var a = arg.get(String(i));
+      var a = arg.get(String(count));
       if (!a) break;
       arr.push(a.id);
       names.push(a.name);
-      i++;
+      count++;
     }
     var id = arr.join(",");
 
     var mod = recordcache[id];
     if (mod) return mod;
 
-    var tp = newType(null, "new Auro.Record([" + names.join(",") + "])");
+    var name = state.findName("record$" + record_count++)
+    var tp = {
+      name: name,
+      wrap: macro.id,
+      unwrap: macro.id,
+      test: macro("$1 instanceof " + name),
+      compile: function (w) {
+        w.write("function " + name + " (" + alphabet.slice(0, count).join(", ") + ") {")
+        w.indent()
+        for (var j = 0; j < count; j++) {
+          var l = alphabet[j]
+          w.write("this." + l + " = " + l + ";")
+        }
+        w.dedent()
+        w.write("}")
+      }
+    }
 
-    mod = { "get": function (name) {
+    state.toCompile.push(tp)
+
+    var tname = name
+    mod = { get: function (name) {
       if (name == "new") {
-        return {ins: [], outs: [0], use: function (args) {
-          return "[" + args.join(", ") + "]";
-        }};
+        var args = []
+        for (var j = 1; j <= count; j++) args.push("$" + j)
+        return macro("new " + tname + "(" + args.join(", ") + ")")
       }
       var a = name.slice(0, 3);
       var n = name.slice(3);
+      var l = alphabet[n]
       if (a == "") return tp;
-      if (a == "get") return macro("$1[" + n + "]", 1, 1);
-      if (a == "set") return macro("$1[" + n + "] = $2", 2, 0);
+      if (a == "get") return macro("$1." + l, 1, 1);
+      if (a == "set") return macro("$1." + l + " = $2", 2, 0);
     } };
 
     recordcache[id] = mod;

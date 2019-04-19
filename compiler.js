@@ -31,22 +31,7 @@ function escape (_str) {
   return '"' + str + '"'
 }
 
-function findName (orig, modname) {
-  function normalize (name) {
-    name = name.replace(/[^$\w]+/g, "_")
-    if (name.match(/^\d/)) name = "_"+name
-    return name
-  }
-  var name = normalize(orig)
-  if (state.nameSet[name] && modname)
-    name = normalize(modname + "$" + orig)
-  var i = 1
-  while (state.nameSet[name]) {
-    name = normalize(orig + "$" + i++)
-  }
-  state.nameSet[name] = true
-  return name
-}
+var findName = state.findName
 
 function tryPush (item, itemtype) {
   var index = state.toCompile.indexOf(item)

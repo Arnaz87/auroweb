@@ -40,3 +40,20 @@ toCompile.push = function (val) { if (this.indexOf(val) < 0) push(val) }
 exports.modules = {}
 exports.nameSet = nameSet
 exports.toCompile = toCompile
+
+exports.findName = function (orig, modname) {
+  function normalize (name) {
+    name = name.replace(/[^$\w]+/g, "_")
+    if (name.match(/^\d/)) name = "_"+name
+    return name
+  }
+  var name = normalize(orig)
+  if (exports.nameSet[name] && modname)
+    name = normalize(modname + "$" + orig)
+  var i = 1
+  while (exports.nameSet[name]) {
+    name = normalize(orig + "$" + i++)
+  }
+  exports.nameSet[name] = true
+  return name
+}

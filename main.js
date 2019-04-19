@@ -90,7 +90,7 @@ var main_mod = load_module(modname, true)
 var main_fn = main_mod.get("main")
 
 var writer = new Writer()
-writer.write("var Auro = typeof Auro == 'undefined' ? {} : Auro")
+writer.write("var Auro = typeof Auro == 'undefined' ? {} : Auro;")
 
 state.toCompile.forEach(function (item) {
   if (item.compile) item.compile(writer)
