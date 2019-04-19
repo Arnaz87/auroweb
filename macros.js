@@ -264,6 +264,7 @@ var macro_modules = {
     readonly: macro("false", 1, 1),
   }),
   "auro\x1fio": new BaseModule("auro.system", {
+    file: wrapperType("File"),
     r: macro("'r'", 0, 1),
     w: macro("'w'", 0, 1),
     a: macro("'a'", 0, 1),

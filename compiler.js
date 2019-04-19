@@ -43,11 +43,11 @@ function tryPush (item, itemtype) {
   return item
 }
 
+var fnCount = 0, tpCount = 0, modCount = 0, cnsCount = 0
+
 function getModule (data, moduleName) {
   var parsed = parse(data)
   var sourcemap = {};
-
-  var fnCount = 0, tpCount = 0, modCount = 0, cnsCount = 0
 
   function Item (line, name) {
     if (!name) name = "item" + state.toCompile.length
@@ -93,6 +93,7 @@ function getModule (data, moduleName) {
         get: function (iname) {
           var iparts = iname.split("\x1d")
           var exact = false
+          var matches = []
           var item
 
           // Match item name with auro name matching rules (Complicated rules)
@@ -118,10 +119,17 @@ function getModule (data, moduleName) {
               }
 
               if (parts.length == 0) exact = true
-              if (item) throw new Error("Name not specific enough")
+              matches.push(it.name)
               item = it
             }
           })
+
+          if (!exact && matches.length > 1) {
+            throw new Error("Name not specific enough: " +
+              escape(iname) + " matches " +
+              matches.map(escape).join(", ") +
+              " in module " + moduleName)
+          }
 
           if (!item) return null
           if (!item.value) {
