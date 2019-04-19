@@ -209,7 +209,12 @@ var macro_modules = {
   }),
   "auro\x1fstring": new BaseModule("auro.string", {
     "string": nativeType("string"),
-    "new": macro("Auro.String.$new($1)", 1, 1),
+    "new": auroFn("string_new", ["buf"], 1,
+      "if (typeof buf === 'string') return buf" +
+      "\nvar str = \"\"" +
+      "\nfor (var i = 0; i < buf.length; i++)" +
+      "\n  str += String.fromCharCode(buf[i])" +
+      "\nreturn decodeURIComponent(escape(str))" ),
     "itos": macro("String($1)", 1, 1),
     "ftos": macro("String($1)", 1, 1),
     "concat": macro("($1 + $2)", 2, 1),
@@ -217,10 +222,15 @@ var macro_modules = {
     "add": macro("($1 + $2)", 2, 1),
     "eq": macro("($1 == $2)", 2, 1),
     "length": macro("$1.length", 1, 1),
-    "charat": macro("Auro.String.charat($1, $2)", 2, 2),
+    "charat": auroFn("charat", ["str", "i"], 2, "return [str[i], i+1]"),
     "newchar": macro("String.fromCharCode($1)", 1, 1),
     "codeof": macro("$1.charCodeAt(0)", 1, 1),
-    "tobuffer": macro("Auro.String.tobuf($1)", 1, 1),
+    "tobuffer": auroFn("str_tobuf", ["str"], 1,
+      "str = unescape(encodeURIComponent(str))" +
+      "\nvar buf = new Uint8Array(str.length)" +
+      "\nfor (var i = 0; i < str.length; i++)" +
+      "\n  buf[i] = str.charCodeAt(i)" +
+      "\nreturn buf" ),
   }),
   "auro\x1fmath": new BaseModule("auro.math", {
     "pi": macro("Math.PI", 0, 1),
@@ -337,7 +347,7 @@ var macro_modules = {
       name: name,
       wrap: macro.id,
       unwrap: macro.id,
-      test: macro("$1 instanceof " + name),
+      test: macro("$1 instanceof " + name, 1, 1),
       compile: function (w) {
         w.write("function " + name + " (" + alphabet.slice(0, count).join(", ") + ") {")
         w.indent()
@@ -357,7 +367,7 @@ var macro_modules = {
       if (name == "new") {
         var args = []
         for (var j = 1; j <= count; j++) args.push("$" + j)
-        return macro("new " + tname + "(" + args.join(", ") + ")")
+        return macro("new " + tname + "(" + args.join(", ") + ")", count, 1)
       }
       var a = name.slice(0, 3);
       var n = name.slice(3);
