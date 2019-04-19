@@ -36,16 +36,6 @@ function wrapperType (name) {
   return tp
 }
 
-function newType (name, line) {
-  return {
-    name: name,
-    id: type_id++,
-    compile: function (writer) {
-      if (line) writer.write("var " + this.name + " = " + line + ";");
-    }
-  }
-}
-
 function BaseModule (modname, data) {
   this.data = data
   this.get = function (name) {
@@ -54,6 +44,24 @@ function BaseModule (modname, data) {
     if (val.compile) state.toCompile.push(val)
     return val
   }
+}
+
+function paramModule (mod) {
+  mod._build = mod.build
+  mod.cache = {}
+
+  if (!mod.get_id) mod.get_id = function (arg) { return arg.get("0").id }
+
+  mod.build = function (arg) {
+    var id = this.get_id(arg)
+    var mod = this.cache[id]
+    if (!mod) {
+      mod = this._build(arg, id)
+      this.cache[id] = mod
+    }
+    return mod
+  }
+  return mod
 }
 
 
@@ -134,18 +142,11 @@ function macro (str, inc, outc, consts) {
 macro.id = macro("$1", 1, 1)
 
 var recordcache = {}
-var arraycache = {}
 var arraylistcache = {}
-var strmapcache = {}
-
-var anyModule = new BaseModule("auro.any", { "any": newType("Auro.Any") })
-
-var record_count = 0
-var shell_count = 0
 
 var macro_modules = {
   "auro\x1fbool": new BaseModule("auro.bool", {
-    "bool": newType("Auro.Bool"),
+    "bool": nativeType("Boolean"),
     "true": macro("true", 0, 1),
     "false": macro("false", 0, 1),
     "not": macro("!$1", 1, 1),
@@ -158,7 +159,7 @@ var macro_modules = {
     argv: macro("Auro.args[$1]", 1, 1, ["args"]),
   }),
   "auro\x1fint": new BaseModule("auro.int", {
-    "int": newType("Auro.Int"),
+    "int": wrapperType("Integer"),
     "neg": macro("-($1)", 1, 1),
     "add": macro("($1 + $2)", 2, 1),
     "sub": macro("($1 - $2)", 2, 1),
@@ -184,7 +185,7 @@ var macro_modules = {
     "shr": macro("($1 >> $2)", 2, 1),
   }),
   "auro\x1ffloat": new BaseModule("auro.float", {
-    "float": newType("Auro.Float"),
+    "float": nativeType("Number"),
     "neg": macro("-($1)", 1, 1),
     "add": macro("($1 + $2)", 2, 1),
     "sub": macro("($1 - $2)", 2, 1),
@@ -259,7 +260,7 @@ var macro_modules = {
     "atan2": macro("Math.atan2($1, $2)", 2, 1),
   }),
   "auro\x1fbuffer": new BaseModule("auro.buffer", {
-    buffer: newType("Auro.Buffer"),
+    buffer: nativeType("Uint8Array"),
     "new": macro("new Uint8Array($1)", 1, 1),
     get: macro("$1[$2]", 2, 1),
     set: macro("$1[$2]=$3", 3, 0),
@@ -282,27 +283,32 @@ var macro_modules = {
       "\nfile.pos += written", ["require", "fs"]),
     eof: auroFn("io_eof", ["file"], 1, "return file.pos >= file.size"),
   }),
-  "auro\x1farray": {build: function (arg) {
-    var base = arg.get("0");
-    var mod = arraycache[base.id];
-    if (mod) return mod;
-    var tp = newType(null, "new Auro.Array(" + base.name + ")");
-    mod = new BaseModule("auro.array", {
-      "": tp,
-      "new": macro("new Array($2).fill($1)", 2, 1),
-      "empty": macro("[]", 0, 1),
-      "get": macro("$1[$2]", 2, 1),
-      "set": macro("$1[$2] = $3", 3, 0),
-      "len": macro("$1.length", 1, 1),
-      "push": macro("$1.push($2)", 2, 0),
-    });
-    arraycache[base.id] = mod;
-    return mod;
-  } },
-  "auro\x1fany": {
+  "auro\x1farray": paramModule({
+    build: function (arg) {
+      var base = arg.get("0")
+      var tp = wrapperType("Array_" + base.name);
+      return  new BaseModule("auro.array", {
+        "": tp,
+        "new": macro("new Array($2).fill($1)", 2, 1),
+        "empty": macro("[]", 0, 1),
+        "get": macro("$1[$2]", 2, 1),
+        "set": macro("$1[$2] = $3", 3, 0),
+        "len": macro("$1.length", 1, 1),
+        "push": macro("$1.push($2)", 2, 0),
+      });
+    }
+  }),
+  "auro\x1fany": paramModule({
+    base_mod: new BaseModule("auro.any", {
+      "any": {
+        name: "any",
+        id: type_id++,
+        test: macro("true")
+      }
+    }),
     build: function (arg) {
       var base = arg.get("0");
-      if (!base) return anyModule;
+      if (!base) return this.base_mod;
       var id = base.id;
       return { "get": function (name) {
         if (name == "new") return base.wrap || macro.id
@@ -311,74 +317,67 @@ var macro_modules = {
       } };
     },
     get: function (name) {
-      if (name == "any") return anyModule.data.any;
+      if (name == "any") return this.base_mod.data.any;
     }
-  },
-  "auro\x1fnull": { build: function (arg) {
+  }),
+  "auro\x1fnull": paramModule({ build: function (arg) {
     var base = arg.get("0");
-    var tp = newType("new Auro.Null(" + base.name + ")");
+    var tp = wrapperType(state.findName("Null_" + base.name));
     return new BaseModule("auro.null", {
       "": tp,
       "null": macro("null", 0, 1),
-      "new": macro("$1", 1, 1),
-      "get": macro("$1", 1, 1),
-      "isnull": macro("Auro.Null.isNull($1)", 1, 1),
+      "new": macro.id,
+      "get": macro.id,
+      "isnull": macro("$1 === null", 1, 1),
     });
-  } },
-  "auro\x1frecord": { build: function (arg) {
-    var arr = [];
-    var names = [];
-    var count = 0;
-    while (true) {
-      var a = arg.get(String(count));
-      if (!a) break;
-      arr.push(a.id);
-      names.push(a.name);
-      count++;
-    }
-    var id = arr.join(",");
-
-    var mod = recordcache[id];
-    if (mod) return mod;
-
-    var tname = state.findName("record_" + type_id)
-    var tp = {
-      name: tname,
-      id: type_id++,
-      wrap: macro.id,
-      unwrap: macro.id,
-      test: macro("$1 instanceof " + tname, 1, 1),
-      compile: function (w) {
-        w.write("function " + tname + " (" + alphabet.slice(0, count).join(", ") + ") {")
-        w.indent()
-        for (var j = 0; j < count; j++) {
-          var l = alphabet[j]
-          w.write("this." + l + " = " + l + ";")
+  } }),
+  "auro\x1frecord": paramModule({
+    get_id: function (arg) {
+      var arr = [];
+      var count = 0;
+      while (true) {
+        var a = arg.get(String(count));
+        if (!a) break;
+        arr.push(a.id);
+        count++;
+      }
+      return arr.join(",");
+    },
+    build: function (arg, id) {
+      var count = id.split(",").length
+      var tname = state.findName("record_" + type_id)
+      var tp = {
+        name: tname,
+        id: type_id++,
+        compile: function (w) {
+          w.write("function " + tname + " (" + alphabet.slice(0, count).join(", ") + ") {")
+          w.indent()
+          for (var j = 0; j < count; j++) {
+            var l = alphabet[j]
+            w.write("this." + l + " = " + l + ";")
+          }
+          w.dedent()
+          w.write("}")
         }
-        w.dedent()
-        w.write("}")
       }
+
+      state.toCompile.push(tp)
+
+      return { get: function (name) {
+        if (name == "new") {
+          var args = []
+          for (var j = 1; j <= count; j++) args.push("$" + j)
+          return macro("new " + tname + "(" + args.join(", ") + ")", count, 1)
+        }
+        var a = name.slice(0, 3);
+        var n = name.slice(3);
+        var l = alphabet[n]
+        if (a == "") return tp;
+        if (a == "get") return macro("$1." + l, 1, 1);
+        if (a == "set") return macro("$1." + l + " = $2", 2, 0);
+      } };
     }
-
-    state.toCompile.push(tp)
-
-    mod = { get: function (name) {
-      if (name == "new") {
-        var args = []
-        for (var j = 1; j <= count; j++) args.push("$" + j)
-        return macro("new " + tname + "(" + args.join(", ") + ")", count, 1)
-      }
-      var a = name.slice(0, 3);
-      var n = name.slice(3);
-      var l = alphabet[n]
-      if (a == "") return tp;
-      if (a == "get") return macro("$1." + l, 1, 1);
-      if (a == "set") return macro("$1." + l + " = $2", 2, 0);
-    } };
-
-    recordcache[id] = mod;
-    return mod;
-  } },
+  }),
   "auro\x1ftypeshell": {build: function (arg) {
     // Each time it's called, a new type is created
     var tname = state.findName("type_" + type_id++)
@@ -389,7 +388,7 @@ var macro_modules = {
       "get": macro.id,
     });
   } },
-  "auro\x1ffunction": { build: function (arg) {
+  /*"auro\x1ffunction": { build: function (arg) {
     var inlist = [];
     var innames = [];
     var outlist = [];
@@ -465,45 +464,64 @@ var macro_modules = {
     mod.name = "function" + tp.name
     recordcache[id] = mod;
     return mod;
-  } },
-  "auro\x1futils\x1fstringmap": {build: function (arg) {
-    var base = arg.get("0");
-    var mod = strmapcache[base.id];
-    if (mod) return mod;
-    var tp = newType(null, "new Auro.StringMap(" + base.name + ")");
-    var itertp = newType(null, "new Auro.StringMap.Iterator(" + base.name + ")")
-    mod = new BaseModule("auro.utils.stringmap", {
-      "": tp,
-      "iterator": itertp,
-      "new": macro("{}", 0, 1),
-      "get": macro("$1[$2]", 2, 1),
-      "set": macro("$1[$2]=$3", 3, 0),
-      "remove": macro("delete $1[$2]", 3, 0),
-      "new\x1diterator": macro("Auro.StringMap.Iterator.$new($1)", 1, 1),
-      "next\x1diterator": macro("$1.next()", 1, 1),
-    })
-    strmapcache[base.id] = mod;
-    return mod;
-  } },
-  "auro\x1futils\x1farraylist": {build: function (arg) {
-    var base = arg.get("0");
-    var mod = arraylistcache[base.id];
-    if (mod) return mod;
+  } },*/
+  "auro\x1futils\x1fstringmap": paramModule({
+    build: function (arg) {
+      var base = arg.get("0")
+      var tp = wrapperType(state.findName("StringMap_" + base.name));
 
-    var name = state.findName("ArrayList_" + base.name)
-    var tp = wrapperType(name)
-    mod = new BaseModule("auro.utils.arraylist", {
-      "": tp,
-      "new": macro("[]", 0, 1),
-      "get": macro("$1[$2]", 2, 1),
-      "set": macro("$1[$2]=$3", 3, 0),
-      "len": macro("$1.length", 1, 1),
-      "push": macro("$1.push($2)", 2, 0),
-      "remove": macro("$1.splice($2, 1)", 2, 0),
-    });
-    arraylistcache[base.id] = mod;
-    return mod;
-  } },
+      var itertp = {
+        name: state.findName("StringMapIter_" + base.name),
+        id: type_id++,
+        compile: function (w) {
+          w.write("function " + this.name + " (map) {")
+          w.indent()
+          w.write("this.map = map")
+          w.write("this.i = 0")
+          w.write("this.keys = Object.keys(map)")
+          w.dedent()
+          w.write("}")
+
+          w.write(this.name + ".prototype.next = function () {")
+          w.indent()
+          w.write("if (this.i >= this.keys.length) return null")
+          w.write("var k = this.keys[this.i++]")
+          w.write("return [k, this.map[k]]")
+          w.dedent()
+          w.write("}")
+        }
+      }
+      state.toCompile.push(itertp)
+
+      return new BaseModule("auro.utils.stringmap", {
+        "": tp,
+        "iterator": itertp,
+        "new": macro("{}", 0, 1),
+        "get": macro("$1[$2]", 2, 1),
+        "set": macro("$1[$2]=$3", 3, 0),
+        "remove": macro("delete $1[$2]", 3, 0),
+        "new\x1diterator": macro("new " + itertp.name + "($1)", 1, 1),
+        "next\x1diterator": macro("$1.next()", 1, 2),
+      })
+    }
+  }),
+  "auro\x1futils\x1farraylist": paramModule({
+    build: function (arg) {
+      var base = arg.get("0");
+
+      var name = state.findName("ArrayList_" + base.name)
+      var tp = wrapperType(name)
+      return new BaseModule("auro.utils.arraylist", {
+        "": tp,
+        "new": macro("[]", 0, 1),
+        "get": macro("$1[$2]", 2, 1),
+        "set": macro("$1[$2]=$3", 3, 0),
+        "len": macro("$1.length", 1, 1),
+        "push": macro("$1.push($2)", 2, 0),
+        "remove": macro("$1.splice($2, 1)", 2, 0),
+      });
+    }
+  }),
 }
 
 exports.macro = macro

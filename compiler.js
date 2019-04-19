@@ -69,70 +69,78 @@ function getModule (data, moduleName) {
   function get_module (n) {
     if (modcache[n]) {
       var m = modcache[n]
-      tryPush(m)
       return m
     }
+    function save (m) { modcache[n] = m; return m }
     var mdata = parsed.modules[n-1]
     if (mdata.type == "build") {
       var base = get_module(mdata.base)
       var arg = get_module(mdata.argument)
-      if (!base.build) console.log(base)
+      if (!base.build) console.log(parsed.modules[mdata.base-1])
       var mod = base.build(arg)
       if (mod instanceof Item) mod.name = findName(base.name)
-      return mod
+      return save(mod)
     }
     if (mdata.type == "import") {
       var mod = macro_modules[mdata.name]
       if (!mod) mod = modLoader(mdata.name)
       if (!mod) mod = new Item("Auro.$import(" + escape(mdata.name) + ")", findName(mdata.name))
-      return mod
+      return save(mod)
     }
     if (mdata.type == "define") {
-      var name = "mod" + ++modCount
-      var items = {}
-      for (var i = 0; i < mdata.items.length; i++) {
-        var item = mdata.items[i]
-        items[item.name] = {
-          type: item.type,
-          index: item.index,
-          value: null
-        }
-      }
-      function getItem (name) {
-        var item = items[name]
-        if (!item) return null
-        if (!item.value) {
-          if (item.type == "function")
-            item.value = get_function(item.index)
-          else if (item.type == "type")
-            item.value = get_type(item.index)
-          else if (item.type == "module")
-            item.value = get_module(item.index)
-        }
-        return item.value
-      }
-      var mod = {
-        name: name,
-        get: function (iname) { return getItem(iname, findName(iname, name)) },
-        build: function () { throw new Error("module is not a functor"); },
-        compile: function (writer) {
-          writer.write("var " + name + " = new Auro.Module({")
-          writer.indent()
-          for (var nm in items) {
-            var item = getItem(nm)
-            writer.write(escape(nm), ": ", item.name, ",")
+      return save({
+        name: "mod" + ++modCount,
+        get: function (iname) {
+          var iparts = iname.split("\x1d")
+          var exact = false
+          var item
+
+          // Match item name with auro name matching rules (Complicated rules)
+          mdata.items.forEach(function (it) {
+            // Exact names have the biggest preference
+            if (exact) return
+
+            var parts = it.name.split("\x1d")
+
+            // Main parts must match
+            if (iparts[0] == parts[0]) {
+              parts.splice(0, 1)
+
+              // All parts in the given name must exist at least once
+              // in this item's name
+              for (var i = 1; i < iparts.length; i++) {
+                var ix = parts.indexOf(iparts[i])
+
+                // Not in item's name, fail
+                if (ix < 0) return
+
+                parts.splice(ix, 1)
+              }
+
+              if (parts.length == 0) exact = true
+              if (item) throw new Error("Name not specific enough")
+              item = it
+            }
+          })
+
+          if (!item) return null
+          if (!item.value) {
+            if (item.type == "function")
+              item.value = get_function(item.index)
+            else if (item.type == "type")
+              item.value = get_type(item.index)
+            else if (item.type == "module")
+              item.value = get_module(item.index)
           }
-          writer.dedent()
-          writer.write("});")
+          return item.value
         }
-      }
-      return mod
+      })
     }
     if (mdata.type == "use") {
       var mod = get_module(mdata.module)
       var item = mod.get(mdata.item)
       if (!item) throw new Error("Module", mdata.item, "not found in", mod)
-      return item
+      return save(item)
     }
     throw new Error(mdata.type + " modules not yet supported");
   }
@@ -150,6 +158,7 @@ function getModule (data, moduleName) {
         f.ins = fn.ins
         f.outs = fn.outs
       }
+      if (!f) console.log(mod)
       tryPush(f)
     } else if (fn.type == "code") {
       f = new Code(fn, get_function);
@@ -214,10 +223,10 @@ function getModule (data, moduleName) {
           var name = "cns" + ++cnsCount;
           state.toCompile.push({
             compile: function (writer) {
-              writer.write("var " + name + " = Auro.Lazy(function () { return " + expr + "});")
+              writer.write("var " + name + " = " + expr)
             }
           });
-          f = {ins: [], outs: [-1], use: function () {return name + "()";}};
+          f = {ins: [], outs: [-1], use: function () {return name}};
         }
       }
     } else {
