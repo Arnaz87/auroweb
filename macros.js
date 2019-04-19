@@ -3,7 +3,23 @@ var state = require('./state.js')
 
 var type_id = 0
 
-var alphabet = ("abcdefghijklmnopqrstuvwxyz").split("")
+var alphabet = "abcdefghijklmnopqrstuvwxyz"
+
+function alphanum (n) {
+  var a = alphabet[n%26]
+  if (a>=26) {
+    a = alphanum(Math.floor(n/26)) + a
+  }
+  return a
+}
+
+function alphaslice (n) {
+  var arr = []
+  for (var i = 0; i < n; i++) {
+    arr.push(alphanum(i))
+  }
+  return arr
+}
 
 function nativeType (name, is_class) {
   var tp = {
@@ -130,7 +146,7 @@ function macro (str, inc, outc, consts) {
       return expr;
     },
   }
-  var args = alphabet.slice(0, inc)
+  var args = alphaslice(inc)
   m.name = "(function (" + args.join(",") + ") {return " + m.use(args) + "})"
   return m
 }
@@ -269,13 +285,13 @@ var macro_modules = {
     w: macro("'w'", 0, 1),
     a: macro("'a'", 0, 1),
     open: auroFn("io_open", ["path", "mode"], 1, "return {f: Auro.fs.openSync(path, mode), size: Auro.fs.statSync(path).size, pos: 0}", ["require", "fs"]),
-    close: auroFn("io_close", ["file"], 1, "Auro.fs.closeSync(file.f)", ["require", "fs"]),
+    close: auroFn("io_close", ["file"], 0, "Auro.fs.closeSync(file.f)", ["require", "fs"]),
     read: auroFn("io_read", ["file", "size"], 1,
       "var buf = new Uint8Array(size)" +
       "\nvar redd = Auro.fs.readSync(file.f, buf, 0, size, file.pos)" +
       "\nfile.pos += redd" +
       "\nreturn buf.slice(0, redd)", ["require", "fs"]),
-    write: auroFn("io_write", ["file", "buf"], 1,
+    write: auroFn("io_write", ["file", "buf"], 0,
       "var written = Auro.fs.writeSync(file.f, buf, 0, buf.length, file.pos)" +
       "\nfile.pos += written", ["require", "fs"]),
     eof: auroFn("io_eof", ["file"], 1, "return file.pos >= file.size"),
@@ -348,10 +364,10 @@ var macro_modules = {
         name: tname,
         id: type_id++,
         compile: function (w) {
-          w.write("function " + tname + " (" + alphabet.slice(0, count).join(", ") + ") {")
+          w.write("function " + tname + " (" + alphaslice(count).join(", ") + ") {")
           w.indent()
           for (var j = 0; j < count; j++) {
-            var l = alphabet[j]
+            var l = alphanum(j)
             w.write("this." + l + " = " + l + ";")
           }
           w.dedent()
@@ -369,7 +385,7 @@ var macro_modules = {
         }
         var a = name.slice(0, 3);
         var n = name.slice(3);
-        var l = alphabet[n]
+        var l = alphanum(n)
         if (a == "") return tp;
         if (a == "get") return macro("#1." + l, 1, 1);
         if (a == "set") return macro("#1." + l + " = #2", 2, 0);
@@ -449,12 +465,12 @@ var macro_modules = {
               ins: inlist.slice(0, -1),
               outs: [0],
               use: function (fargs) {
-                var args = alphabet.slice(0, inlist.length)
+                var args = alphaslice(inlist.length)
                 var inargs = args.join(",")
                 args.push("this")
                 var fnargs = args.join(",")
 
-                var def = "(function (" + inargs + ") { " + fn.name + "(" + fnargs + ") })"
+                var def = "(function (" + inargs + ") { return " + fn.name + "(" + fnargs + ") })"
                 return def + ".bind(" + fargs[0] + ")"
               }
             }});
