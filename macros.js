@@ -128,7 +128,7 @@ function macro (str, inc, outc, consts) {
     use: function (args) {
       var expr = this.macro;
       for (var i = 0; i < this.ins.length; i++) {
-        var patt = new RegExp("#" + (i+1), "g");
+        var patt = new RegExp("#" + (i+1) + "(?!\\d)", "g")
         expr = expr.replace(patt, args[i]);
       }
       return expr;
@@ -153,7 +153,7 @@ var macro_modules = {
   }),
   "auro\x1fsystem": new BaseModule("auro.system", {
     "println": macro("console.log(#1)", 1, 0),
-    "error": macro("Auro.system.error(#1)", 1, 0),
+    "error": macro("throw new Error(#1)", 1, 0),
     "exit": auroFn("exit", ["code"], 0, "if (typeof process !== \"undefined\") process.exit(code)\nelse throw \"Auro Exit with code \" + code"),
     argc: macro("Auro.args.length", 0, 1, ["args"]),
     argv: macro("Auro.args[#1]", 1, 1, ["args"]),
@@ -328,7 +328,8 @@ var macro_modules = {
       "null": macro("null", 0, 1),
       "new": macro.id,
       "get": macro.id,
-      "isnull": macro("#1 === null", 1, 1),
+      // null and undefined are loosely equals, so this tests both
+      "isnull": macro("(#1 == null)", 1, 1),
     });
   } }),
   "auro\x1frecord": paramModule({
@@ -498,7 +499,7 @@ var macro_modules = {
         "iterator": itertp,
         "new": macro("{}", 0, 1),
         "get": macro("#1[#2]", 2, 1),
-        "set": macro("#1[#2]=#3", 3, 0),
+        "set": macro("#1[#2] = #3", 3, 0),
         "remove": macro("delete #1[#2]", 3, 0),
         "new\x1diterator": macro("new " + itertp.name + "(#1)", 1, 1),
         "next\x1diterator": macro("#1.next()", 1, 2),

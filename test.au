@@ -1,43 +1,4 @@
-module any_mod = import auro.any;
-type any = any_mod.any;
-
-module array_mod = import auro.array;
-module arr_arg { `0` = any; }
-module any_arr = array_mod(arr_arg);
-type array = any_arr.``;
-
-array new_arr (any, int) = any_arr.`new`;
-any get (array, int) = any_arr.get;
-void set (array, int, any) = any_arr.set;
-
-module anystr_arg { `0` = string; }
-module anystr_mod = any_mod(anystr_arg);
-any anystr (string) = anystr_mod.`new`;
-string get_str (any) = anystr_mod.get;
-bool test_str (any) = anystr_mod.test;
-
-module record = import auro.record;
-module args { `0` = string; }
-module val_mod = record(args);
-type Val = val_mod.``;
-Val val_new (string) = val_mod.`new`;
-string val_get (Val) = val_mod.get0;
-
-module anyval_arg { `0` = Val; }
-module anyval_mod = any_mod(anyval_arg);
-any anyval (Val) = anyval_mod.`new`;
-Val get_val (any) = anyval_mod.get;
-bool test_val (any) = anyval_mod.test;
-
-string f (any a) {
-  if (test_str(a)) return get_str(a);
-  if (test_val(a)) return "Val(" + val_get(get_val(a)) + ")";
-  return "?";
-}
 
 void main () {
-  array a = new_arr(anystr(""), 2);
-  set(a, 0, anyval(val_new("Foo")));
-  set(a, 1, anystr("Bar"));
-  println(f(get(a, 0)) + f(get(a, 1)));
+  println("Hola Mundo!");
 }
