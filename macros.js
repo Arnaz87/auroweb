@@ -6,14 +6,11 @@ var type_id = 0
 var alphabet = ("abcdefghijklmnopqrstuvwxyz").split("")
 
 function nativeType (name, is_class) {
-  var test = is_class ?
-    "#1 instanceof " + name :
-    "typeof #1 === '" + name + "'"
-
   var tp = {
     name: name,
     id: type_id++,
-    test: macro(test, 1, 1)
+    test: is_class ? null :
+      macro("(typeof #1 === '" + name + "')", 1, 1)
   }
   return tp
 }
@@ -26,7 +23,6 @@ function wrapperType (name) {
     id: type_id++,
     wrap: macro("new " + name + "(#1)", 1, 1),
     unwrap: macro("#1.val", 1, 1),
-    test: macro("#1 instanceof " + name, 1, 1),
     compile: function (w) {
       w.write("var " + name + " = function (val) { this.val = val; }")
     }
@@ -146,7 +142,7 @@ var arraylistcache = {}
 
 var macro_modules = {
   "auro\x1fbool": new BaseModule("auro.bool", {
-    "bool": nativeType("Boolean"),
+    "bool": nativeType("boolean"),
     "true": macro("true", 0, 1),
     "false": macro("false", 0, 1),
     "not": macro("!#1", 1, 1),
@@ -185,7 +181,7 @@ var macro_modules = {
     "shr": macro("(#1 >> #2)", 2, 1),
   }),
   "auro\x1ffloat": new BaseModule("auro.float", {
-    "float": nativeType("Number"),
+    "float": nativeType("number"),
     "neg": macro("-(#1)", 1, 1),
     "add": macro("(#1 + #2)", 2, 1),
     "sub": macro("(#1 - #2)", 2, 1),
@@ -260,7 +256,7 @@ var macro_modules = {
     "atan2": macro("Math.atan2(#1, #2)", 2, 1),
   }),
   "auro\x1fbuffer": new BaseModule("auro.buffer", {
-    buffer: nativeType("Uint8Array"),
+    buffer: nativeType("Uint8Array", true),
     "new": macro("new Uint8Array(#1)", 1, 1),
     get: macro("#1[#2]", 2, 1),
     set: macro("#1[#2]=#3", 3, 0),
@@ -313,7 +309,7 @@ var macro_modules = {
       return { "get": function (name) {
         if (name == "new") return base.wrap || macro.id
         if (name == "get") return base.unwrap  || macro.id
-        if (name == "test") return base.test || macro("#1 instanceof " + base.name)
+        if (name == "test") return base.test || macro("(#1 instanceof " + base.name + ")", 1, 1)
       } };
     },
     get: function (name) {
