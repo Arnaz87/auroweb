@@ -385,83 +385,85 @@ var macro_modules = {
       "get": macro.id,
     });
   } },
-  /*"auro\x1ffunction": { build: function (arg) {
-    var inlist = [];
-    var innames = [];
-    var outlist = [];
-    var outnames = [];
+  "auro\x1ffunction": paramModule({
+    get_id: function (arg) {
+      var inlist = [];
+      var innames = [];
+      var outlist = [];
+      var outnames = [];
 
-    var i = 0;
-    while (true) {
-      var a = arg.get("in" + String(i));
-      if (!a) break;
-      inlist.push(a.id);
-      innames.push(a.name);
-      i++;
-    }
+      var i = 0;
+      while (true) {
+        var a = arg.get("in" + String(i));
+        if (!a) break;
+        inlist.push(a.id);
+        i++;
+      }
 
-    var i = 0;
-    while (true) {
-      var a = arg.get("out" + String(i));
-      if (!a) break;
-      outlist.push(a.id);
-      outnames.push(a.name);
-      i++;
-    }
+      var i = 0;
+      while (true) {
+        var a = arg.get("out" + String(i));
+        if (!a) break;
+        outlist.push(a.id);
+        i++;
+      }
 
-    var id = inlist.join(",") + "->" + outlist.join(",");
+      return inlist.join(",") + ":" + outlist.join(",");
+    },
+    build: function (arg, id) {
 
-    var mod = recordcache[id];
-    if (mod) return mod;
+      var sig = id.split(":").map(function (l) {
+        if (l == "") return []
+        return l.split(",").map(parseInt)
+      })
+      var inlist = sig[0]
+      var outlist = sig[1]
 
-    var tp = newType(null, "new Auro.Function([" + innames.join(",") + "], [" + outnames.join(",") + "])");
+      var tp = wrapperType(state.findName("Function$" + type_id))
 
-    var argnames = alphabet.slice(0, inlist.length)
-
-    function createDefinition (fn, last) {
-      var args = argnames.slice()
-      if (last) args.push(last)
-      return "(function (" + argnames.join(",") + ") {return " + fn.use(args) + "})"
-    }
-
-    mod = new BaseModule("auro.function", {
-      "": tp,
-      "apply": {
-        ins: inlist,
-        outs: outlist,
-        use: function (fargs) {
-          return fargs[0] + "(" + fargs.slice(1).join(", ") + ")"
-        }
-      },
-      "new": { build: function (args) {
-        var fn = args.get("0")
-
-        return new BaseModule("function", {"": {
+      mod = new BaseModule("auro.function", {
+        "": tp,
+        "apply": {
           ins: inlist,
           outs: outlist,
-          use: function (fargs) { return fn.name }
-        }})
-      } },
-      closure: {
-        name: "Auro.Closure",
-        build: function (args) {
+          use: function (fargs) {
+            return fargs[0] + "(" + fargs.slice(1).join(", ") + ")"
+          }
+        },
+        "new": { build: function (args) {
           var fn = args.get("0")
 
-          return new BaseModule("closure", {"new": {
-            ins: inlist,
-            outs: outlist,
-            use: function (fargs) {
-              var def = createDefinition(fn, "this")
-              return def + ".bind(" + fargs[0] + ")"
-            }
-          }});
+          return new BaseModule("function", {"": {
+            ins: [],
+            outs: [0],
+            use: function (fargs) { return fn.name }
+          }})
+        } },
+        closure: {
+          name: "Auro.Closure",
+          build: function (args) {
+            var fn = args.get("0")
+
+            return new BaseModule("closure", {"new": {
+              ins: inlist.slice(0, -1),
+              outs: [0],
+              use: function (fargs) {
+                var args = alphabet.slice(0, inlist.length)
+                var inargs = args.join(",")
+                args.push("this")
+                var fnargs = args.join(",")
+
+                var def = "(function (" + inargs + ") { " + fn.name + "(" + fnargs + ") })"
+                return def + ".bind(" + fargs[0] + ")"
+              }
+            }});
+          }
         }
-      }
-    });
-    mod.name = "function" + tp.name
-    recordcache[id] = mod;
-    return mod;
-  } },*/
+      });
+      mod.name = "function" + tp.name
+      return mod;
+    }
+  }),
   "auro\x1futils\x1fstringmap": paramModule({
     build: function (arg) {
       var base = arg.get("0")
