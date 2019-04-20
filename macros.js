@@ -7,8 +7,8 @@ var alphabet = "abcdefghijklmnopqrstuvwxyz"
 
 function alphanum (n) {
   var a = alphabet[n%26]
-  if (a>=26) {
-    a = alphanum(Math.floor(n/26)) + a
+  if (n >= 26) {
+    a = alphanum(Math.floor(n/26)-1) + a
   }
   return a
 }
