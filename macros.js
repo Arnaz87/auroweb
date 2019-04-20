@@ -53,6 +53,10 @@ function BaseModule (modname, data) {
   this.get = function (name) {
     var val = data[name]
     if (!val) throw new Error(name + " not found in " + modname)
+    if (typeof val == "function") {
+      val = val()
+      data[name] = val
+    }
     if (val.compile) state.toCompile.push(val)
     return val
   }
@@ -360,33 +364,21 @@ var macro_modules = {
     build: function (arg, id) {
       var count = id.split(",").length
       var tname = state.findName("record_" + type_id)
-      var tp = {
-        name: tname,
-        id: type_id++,
-        compile: function (w) {
-          w.write("function " + tname + " (" + alphaslice(count).join(", ") + ") {")
-          w.indent()
-          for (var j = 0; j < count; j++) {
-            var l = alphanum(j)
-            w.write("this." + l + " = " + l + ";")
-          }
-          w.dedent()
-          w.write("}")
-        }
-      }
+      var tp = wrapperType(tname)
 
-      state.toCompile.push(tp)
+      var fields = []
+      for (var i = 0; i < count; i++) {
+        fields.push(alphanum(i) + ": #" + (i+1))
+      }
+      var new_macro = macro("{" + fields.join(", ") + "}", count, 1)
 
       return { get: function (name) {
-        if (name == "new") {
-          var args = []
-          for (var j = 1; j <= count; j++) args.push("#" + j)
-          return macro("new " + tname + "(" + args.join(", ") + ")", count, 1)
-        }
+        if (name == "new") return new_macro
+        if (name == "") return tp;
+        
         var a = name.slice(0, 3);
         var n = name.slice(3);
         var l = alphanum(n)
-        if (a == "") return tp;
         if (a == "get") return macro("#1." + l, 1, 1);
         if (a == "set") return macro("#1." + l + " = #2", 2, 0);
       } };
@@ -502,12 +494,15 @@ var macro_modules = {
           w.indent()
           w.write("if (this.i >= this.keys.length) return null")
           w.write("var k = this.keys[this.i++]")
-          w.write("return [k, this.map[k]]")
+          w.write("return {a: k, b: this.map[k]}")
           w.dedent()
           w.write("}")
         }
       }
-      state.toCompile.push(itertp)
+
+      function iterfn () {
+        
+      }
 
       return new BaseModule("auro.utils.stringmap", {
         "": tp,
@@ -515,9 +510,9 @@ var macro_modules = {
         "new": macro("{}", 0, 1),
         "get": macro("#1[#2]", 2, 1),
         "set": macro("#1[#2] = #3", 3, 0),
-        "remove": macro("delete #1[#2]", 3, 0),
+        "remove": macro("delete #1[#2]", 2, 0),
         "new\x1diterator": macro("new " + itertp.name + "(#1)", 1, 1),
-        "next\x1diterator": macro("#1.next()", 1, 2),
+        "next\x1diterator": macro("#1.next()", 1, 1),
       })
     }
   }),
