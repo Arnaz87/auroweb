@@ -11,6 +11,7 @@
 
 <script type="text/javascript" src="bundle.js"></script>
 <script type="text/javascript">
+
 var _log = console.log
 console.log = function () {
   _log.apply(console, arguments)
@@ -19,15 +20,11 @@ console.log = function () {
   contentpre.textContent += str + "\n"
 }
 
-var codes = []
-
 function compile (buffer) {
-  var code = Cobre.compile(buffer, "main")
-  codes.push(code)
-  eval(code)
-
+  Auro.modules['main'] = buffer
   try {
-    Cobre.$import("main").get("main")()
+    var code = Auro.compile('main')
+    eval(code)
   } catch (e) {
     contentpre.textContent += String(e) + "\n"
     throw e

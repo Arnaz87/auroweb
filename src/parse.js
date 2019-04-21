@@ -3,7 +3,7 @@ module.exports = function parse (buffer) {
 buffer = new Uint8Array(buffer);
 var pos = 0;
 
-function fail (msg) { console.log(msg + ". at byte " + pos.toString(16)); process.exit(1); }
+function fail (msg) { throw new Error(msg + ". at byte " + pos.toString(16)); }
 function unsupported (msg) { fail("Unsupported " + msg); }
 
 function readByte () {
