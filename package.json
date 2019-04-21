@@ -1,0 +1,22 @@
+{
+  "name": "auroweb",
+  "version": "1.0.0",
+  "description": "An implementation of Auro that comilpes module files to javascript.",
+  "main": "src/main.js",
+  "scripts": {
+    "build": "browserify src/browser.js -o bundle.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@gitlab.com/aurovm/auroweb.git"
+  },
+  "author": "Arnaud Castellanos Galea",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://gitlab.com/aurovm/auroweb/issues"
+  },
+  "homepage": "https://gitlab.com/aurovm/auroweb",
+  "devDependencies": {
+    "browserify": "^16.2.3"
+  }
+}

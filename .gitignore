@@ -2,3 +2,5 @@ out
 out.js
 out.html
 bundle.js
+node_modules
+package-lock.json
