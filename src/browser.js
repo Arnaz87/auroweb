@@ -6,15 +6,11 @@ var compiled_modules = {}
 
 var Auro = {
   modules: {},
-  compile_module: function () {
-    
+  compile: function (name) {
   }
 }
-Auro.escape = Compiler.escape
-Auro.compile = Compiler.compile
 
 if (typeof window === "undefined")
   throw new Error("Not running in a browser")
-
 
 window.Auro = Auro

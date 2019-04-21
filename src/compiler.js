@@ -8,9 +8,36 @@ const state = require("./state.js")
 const macro_modules = macros.modules
 const macro = macros.macro
 
-const Auro = require("./auro.js")
-
 var modLoader = function () { return null }
+
+function decode_utf8 (bytes) {
+  var codes = []
+  for (var i = 0; i < bytes.length; i++) {
+    var c = bytes[i]
+    if (c > 0xEF) {
+      c = (c & 0xF) << 0x12 |
+          (bytes[++i] & 0x3F) << 0xC |
+          (bytes[++i] & 0x3F) << 0x6 |
+          (bytes[++i] & 0x3F)
+    } else if (c > 0xDF) {
+      c = (c & 0xF) << 0xC |
+          (bytes[++i] & 0x3F) << 0x6 |
+          (thirdByte & 0x3F)
+    } else if (c > 0xBF) {
+      c = (c & 0x1F) << 0x6 | (bytes[++i] & 0x3F)
+    }
+
+    if (c > 0xFFFF) {
+      c -= 0x10000
+      codes.push(c >>> 10 & 0x3FF | 0xD800)
+      codes.push(0xDC00 | c & 0x3FF)
+    } else {
+      codes.push(c)
+    }
+  }
+
+  return String.fromCharCode.apply(String, codes)
+}
 
 function escape (_str) {
   var str = ""
@@ -202,7 +229,8 @@ function getModule (data, moduleName) {
         var bytes = get_function(fn.args[0]).bytes
         if (bytes instanceof Array) {
           // This is necessary to correctly read multi-byte characters
-          var _str = String(Buffer.from(bytes))
+          var _str = decode_utf8(bytes)
+
           var str = ""
           for (var j = 0; j < _str.length; j++) {
             var code = _str.charCodeAt(j)
@@ -218,6 +246,7 @@ function getModule (data, moduleName) {
             }
             str += char;
           }
+
           f = macro('"'+str+'"', 0, 1);
         }
       } else {

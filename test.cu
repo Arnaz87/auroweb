@@ -1,32 +1,37 @@
 
-import auro.system { void println (string); }
-
-import auro.function (string as in0, string as in1) {
-  type `` as fn2 {
-    void apply (string, string);
-  }
-  module `new` as newfn2;
+import auro.buffer {
+  type buffer;
+  buffer `new` (int size) as newbuf;
+  int size (buffer) as bufsize;
+  int get (buffer, int index) as bufget;
+  void set (buffer, int index, int value) as bufset;
 }
 
-import auro.function (string as in0) {
-  type `` as fn1 { void apply (string); }
-  module closure;
+import auro.string {
+  int length (string) as strlen;
+  buffer tobuffer (string) as strbuf;
 }
 
-import module newfn2 (fa) { fn2 `` () as get_fn2a; }
-import module newfn2 (fb) { fn2 `` () as get_fn2b; }
-
-import module closure (fa as `0`) { fn1 `new` (string) as fa_closure; }
-
-void fa (string x, string y) { println("a" + x + y); }
-void fb (string x, string y) { println("b" + x + y); }
+import auro.io {
+  type file as File;
+  type mode as FileMode;
+  FileMode r() as r_mode;
+  FileMode w() as w_mode;
+  FileMode a() as a_mode;
+  File open (string, FileMode);
+  buffer read (File, int);
+  bool eof (File);
+  void write (File, buffer);
+  void close (File);
+}
 
 void main () {
-  get_fn2a().apply("1", "2");
-  get_fn2b().apply("1", "2");
-
-  fn1 aa = fa_closure("3");
-  fn1 ab = fa_closure("4");
-  aa.apply("1");
-  ab.apply("1");
+  println("¡Curaçao!");
+  buffer b = strbuf("¡Curaçao!");
+  int i = 0;
+  println("Length: " + itos(bufsize(b)));
+  while (i < bufsize(b)) {
+    println(itos(bufget(b, i)));
+    i = i+1;
+  }
 }

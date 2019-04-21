@@ -225,12 +225,28 @@ var macro_modules = {
   }),
   "auro\x1fstring": new BaseModule("auro.string", {
     "string": nativeType("string"),
+    // TODO: This is fragile with wrong utf8 strings
     "new": auroFn("string_new", ["buf"], 1,
       "if (typeof buf === 'string') return buf" +
-      "\nvar str = \"\"" +
-      "\nfor (var i = 0; i < buf.length; i++)" +
-      "\n  str += String.fromCharCode(buf[i])" +
-      "\nreturn decodeURIComponent(escape(str))" ),
+      "\nvar codes = []" +
+      "\nfor (var j = 0; j < buf.length; j++) {" +
+      "\n  var c = buf[j]" +
+      "\n  if (c > 0xEF) {" +
+      "\n    c = (c & 0xF) << 0x12 | (buf[++j] & 0x3F) << 0xC | (buf[++j] & 0x3F) << 0x6 | (buf[++j] & 0x3F)" +
+      "\n  } else if (c > 0xDF) {" +
+      "\n    c = (c & 0xF) << 0xC | (buf[++j] & 0x3F) << 0x6 | (buf[++j] & 0x3F)" +
+      "\n  } else if (c > 0xBF) {" +
+      "\n    c = (c & 0x1F) << 0x6 | (buf[++j] & 0x3F)" +
+      "\n  }" +
+      "\n  if (c > 0xFFFF) {" +
+      "\n    c -= 0x10000" +
+      "\n    codes.push(c >>> 10 & 0x3FF | 0xD800)" +
+      "\n    codes.push(0xDC00 | c & 0x3FF)" +
+      "\n  } else {" +
+      "\n    codes.push(c)" +
+      "\n  }" +
+      "\n}" +
+      "\nreturn String.fromCharCode.apply(String, codes)"),
     "itos": macro("String(#1)", 1, 1),
     "ftos": macro("String(#1)", 1, 1),
     "concat": macro("(#1 + #2)", 2, 1),
@@ -242,11 +258,23 @@ var macro_modules = {
     "newchar": macro("String.fromCharCode(#1)", 1, 1),
     "codeof": macro("#1.charCodeAt(0)", 1, 1),
     "tobuffer": auroFn("str_tobuf", ["str"], 1,
-      "str = unescape(encodeURIComponent(str))" +
-      "\nvar buf = new Uint8Array(str.length)" +
-      "\nfor (var i = 0; i < str.length; i++)" +
-      "\n  buf[i] = str.charCodeAt(i)" +
-      "\nreturn buf" ),
+      "bytes = []" +
+      "\nfor (var i = 0; i < str.length; i++) {" +
+      "\n  var c = str.charCodeAt(i)" +
+      "\n  if (c >= 0xD800 && c <= 0xDFFF) {" +
+      "\n    c = (c - 0xD800 << 10 | str.charCodeAt(++i) - 0xDC00) + 0x10000" +
+      "\n  }" +
+      "\n  if (c < 0x80) {" +
+      "\n    bytes.push(c)" +
+      "\n  } else if (c < 0x800) {" +
+      "\n    bytes.push(c >> 0x6 | 0xC0, c & 0x3F | 0x80)" +
+      "\n  } else if (c < 0x10000) {" +
+      "\n    bytes.push(c >> 0xC | 0xE0, c >> 0x6 & 0x3F | 0x80, c & 0x3F | 0x80)" +
+      "\n  } else {" +
+      "\n    bytes.push(c >> 0x12 | 0xF0, c >> 0xC & 0x3F | 0x80, c >> 0x6 & 0x3F | 0x80, c & 0x3F | 0x80)" +
+      "\n  }" +
+      "\n}" +
+      "\nreturn Uint8Array.from(bytes)"),
   }),
   "auro\x1fmath": new BaseModule("auro.math", {
     "pi": macro("Math.PI", 0, 1),
