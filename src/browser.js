@@ -39,6 +39,13 @@ window.addEventListener("load", function () {
 
     var mod_name = script.getAttribute("auro-name")
     
+    if (!mod_name && script.src) {
+      mod_name = script.src.match(/^(?:.*\/)?([^?]+)/)[1]
+      if (mod_name) {
+        mod_name = mod_name.replace(/\./g, "\x1f")
+      }
+    }
+
     if (!mod_name) {
       console.warn("auro script does not have attribute auro-name")
       return
