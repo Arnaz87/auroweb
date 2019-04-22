@@ -20,11 +20,17 @@ console.log = function () {
   contentpre.textContent += str + "\n"
 }
 
+var jscode
+var count = 0
+
 function compile (buffer) {
-  Auro.modules['main'] = buffer
+  Auro.state.reset()
+  var modname = 'main' + count++
+  Auro.modules[modname] = buffer
   try {
-    var code = Auro.compile('main')
-    eval(code)
+    jscode = Auro.compile(modname, 'browser')
+    var fn = new Function(jscode)
+    fn()
   } catch (e) {
     contentpre.textContent += String(e) + "\n"
     throw e
@@ -40,5 +46,8 @@ function upload () {
   reader.readAsArrayBuffer(fileinput.files[0])
 }
 </script>
+
+<script type="application/auro" src="out" auro-name="main" auro-main="auro-main"></script>
+
 </body>
 </html>

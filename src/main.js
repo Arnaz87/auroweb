@@ -20,36 +20,25 @@ function usage () {
 
 var paths = [process.env.HOME + "/.auro/modules/", "./"]
 
-var modules = state.modules
-
-for (var name in macros.modules) {
-  modules[name] = macros.modules
-}
-
-var include = false
-
-function load_module (name) {
-  if (modules[name]) return modules[name]
-
+compiler.setModuleLoader(function load_module (name) {
   var escaped = name.replace(/\x1f/g, ".")
 
   for (var i = paths.length-1; i >= 0; i--) {
     var filename = paths[i] + escaped
     if (fs.existsSync(filename)) {
       var src = fs.readFileSync(filename)
-      return modules[name] = compiler.getModule(src, name)
+      return compiler.getModule(src, name)
     }
   }
 
   throw new Error("module " + name + " not found")
-}
-
-compiler.setModuleLoader(load_module)
+})
 
 const argv = process.argv;
 
-var mode;
+var mode = 'node';
 var modname;
+var libname;
 var outfile;
 
 if (argv.length < 3) usage();
@@ -69,9 +58,13 @@ for (var i = 2; i < argv.length; i++) {
   if (arg == "--include") { include = true; continue; }
   if (arg == "--lib") { mode = "lib"; continue; }
   if (arg == "--node") { mode = "node"; continue; }
-  if (arg == "--term") { mode = "term"; continue; }
-  if (arg == "--html") { mode = "html"; continue; }
+  if (arg == "--browser") { mode = "browser"; continue; }
   if (arg == "--nodelib") { mode = "nodelib"; continue; }
+  if (arg == "--browserlib") {
+    mode = "browserlib";
+    libname = argv[++i];
+    continue;
+  }
   if (arg[0] == "-") {
     console.log("Unknown option " + arg);
     process.exit(1);
@@ -86,17 +79,7 @@ for (var i = 2; i < argv.length; i++) {
 if (!modname) { console.log("No module given"); process.exit(1); }
 
 modname = modname.replace(/\./g, "\x1f")
-var main_mod = load_module(modname, true)
-var main_fn = main_mod.get("main")
+var output = compiler.compile_to_string(modname, mode, libname)
 
-var writer = new Writer()
-writer.write("var Auro = typeof Auro == 'undefined' ? {} : Auro;")
-
-state.toCompile.forEach(function (item) {
-  if (item.compile) item.compile(writer)
-})
-
-writer.write(main_fn.use([]))
-
-if (outfile) fs.writeFileSync(outfile, writer.text)
-else process.stdout.write(writer.text)
+if (outfile) fs.writeFileSync(outfile, output)
+else process.stdout.write(output)

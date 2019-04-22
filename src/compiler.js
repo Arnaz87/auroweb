@@ -5,10 +5,23 @@ const Code = require("./code.js")
 const macros = require("./macros.js")
 const state = require("./state.js")
 
-const macro_modules = macros.modules
 const macro = macros.macro
 
 var modLoader = function () { return null }
+
+for (var name in macros.modules) {
+  state.modules[name] = macros.modules[name]
+}
+
+function load_module (name) {
+  var mod = state.modules[name]
+  if (!mod) {
+    mod = modLoader(name)
+    state.modules[name] = mod
+  }
+  if (!mod) throw new Error("Module " + name + " not found")
+  return mod
+}
 
 function decode_utf8 (bytes) {
   var codes = []
@@ -22,7 +35,7 @@ function decode_utf8 (bytes) {
     } else if (c > 0xDF) {
       c = (c & 0xF) << 0xC |
           (bytes[++i] & 0x3F) << 0x6 |
-          (thirdByte & 0x3F)
+          (bytes[++i] & 0x3F)
     } else if (c > 0xBF) {
       c = (c & 0x1F) << 0x6 | (bytes[++i] & 0x3F)
     }
@@ -76,22 +89,6 @@ function getModule (data, moduleName) {
   var parsed = parse(data)
   var sourcemap = {};
 
-  function Item (line, name) {
-    if (!name) name = "item" + state.toCompile.length
-
-    this.name = name
-    this.compile = function (writer) { writer.write("var " + name + " = " + line + ";") }
-
-    // For modules
-    this.get = function (iname) { return new Item(name + ".get(" + escape(iname) + ")", findName(iname, name)) }
-    this.build = function (arg) { return new Item(name + ".build(" + arg.name + ")") }
-
-    // For functions
-    this.use = function (args) { return name + "(" + args.join(", ") + ")" }
-
-    state.toCompile.push(this)
-  }
-
   var modcache = {};
   function get_module (n) {
     if (modcache[n]) {
@@ -105,14 +102,10 @@ function getModule (data, moduleName) {
       var arg = get_module(mdata.argument)
       if (!base.build) console.log(parsed.modules[mdata.base-1])
       var mod = base.build(arg)
-      if (mod instanceof Item) mod.name = findName(base.name)
       return save(mod)
     }
     if (mdata.type == "import") {
-      var mod = macro_modules[mdata.name]
-      if (!mod) mod = modLoader(mdata.name)
-      if (!mod) mod = new Item("Auro.$import(" + escape(mdata.name) + ")", findName(mdata.name))
-      return save(mod)
+      return save(load_module(mdata.name))
     }
     if (mdata.type == "define") {
       return save({
@@ -168,6 +161,23 @@ function getModule (data, moduleName) {
               item.value = get_module(item.index)
           }
           return item.value
+        },
+        get_items: function () {
+          var items = {}
+
+          mdata.items.forEach(function (item) {
+            if (!item.value) {
+              if (item.type == "function")
+                item.value = get_function(item.index)
+              else if (item.type == "type")
+                item.value = get_type(item.index)
+              else if (item.type == "module")
+                item.value = get_module(item.index)
+            }
+            items[item.name] = item.value
+          })
+
+          return items
         }
       })
     }
@@ -188,11 +198,6 @@ function getModule (data, moduleName) {
     if (fn.type == "import") {
       var mod = get_module(fn.module)
       f = mod.get(fn.name)
-      if (f instanceof Item) {
-        f.name = findName("fn" + ++fnCount)
-        f.ins = fn.ins
-        f.outs = fn.outs
-      }
       if (!f) console.log(mod)
       tryPush(f)
     } else if (fn.type == "code") {
@@ -224,8 +229,12 @@ function getModule (data, moduleName) {
       f = macro(str, 0, 1);
       f.bytes = fn.data
     } else if (fn.type == "call") {
-      var cfn = get_function(fn.index);
-      if (cfn == macro_modules["auro\x1fstring"].data["new"]) {
+
+      var fndef = parsed.functions[fn.index]
+      var is_new_str = fndef.type == "import" && fndef.name == "new" &&
+        get_module(fndef.module) == macros.modules["auro\x1fstring"];
+
+      if (is_new_str) {
         var bytes = get_function(fn.args[0]).bytes
         if (bytes instanceof Array) {
           // This is necessary to correctly read multi-byte characters
@@ -250,6 +259,7 @@ function getModule (data, moduleName) {
           f = macro('"'+str+'"', 0, 1);
         }
       } else {
+        var cfn = get_function(fn.index);
         var args = fn.args.map(function (ix) {
           return get_function(ix).use([]);
         });
@@ -323,6 +333,72 @@ function getModule (data, moduleName) {
   return get_module(1)
 }
 
+function compile_to_string (modname, format, libname) {
+  var writer = new Writer()
+ 
+  var mod = load_module(modname)
+
+  function write_compiled () {
+    state.toCompile.forEach(function (item) {
+      if (item.compile) item.compile(writer)
+    })
+  }
+
+  var items
+  function get_items () {
+    if (!mod.get_items)
+      throw new Error("Module " + modname + " has no accessible items")
+    items = mod.get_items()
+  }
+
+  function write_items (fn) {
+    for (var nm in items) {
+      writer.write(fn(escape(nm), items[nm].name))
+    }
+  }
+
+  function write_auro () {
+    writer.write("var Auro = {};")
+  }
+
+  switch (format) {
+    case 'nodelib':
+      get_items()
+      write_auro()
+      write_compiled()
+      write_items(function (key, val) {
+        return "module.exports[" + key + "] = " + val
+      })
+      break
+    case 'browserlib':
+      get_items()
+
+      writer.write("(function (window) {")
+      write_auro()
+      write_compiled()
+
+      writer.write("window[" + escape(libname || modname) + "] = {")
+      writer.indent()
+      write_items(function (key, val) {
+        return key + ": " + val + ","
+      })
+      writer.dedent()
+      writer.write("};")
+      writer.write("})(window)")
+      break
+    case 'browser':
+    case 'node':
+      var main_fn = mod.get("main")
+      write_auro()
+      write_compiled()
+      writer.write(main_fn.use([]))
+      break
+  }
+
+  return writer.text
+}
+
 exports.setModuleLoader = function (fn) { modLoader = fn }
 exports.escape = escape
 exports.getModule = getModule
+exports.compile_to_string = compile_to_string

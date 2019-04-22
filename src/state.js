@@ -57,3 +57,7 @@ exports.findName = function (orig, modname) {
   exports.nameSet[name] = true
   return name
 }
+
+exports.reset = function () {
+  toCompile.length = 0
+}
