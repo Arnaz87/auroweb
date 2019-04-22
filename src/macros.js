@@ -43,8 +43,6 @@ function wrapperType (name) {
       w.write("var " + name + " = function (val) { this.val = val; }")
     }
   }
-
-  state.toCompile.push(tp)
   return tp
 }
 
@@ -57,7 +55,7 @@ function BaseModule (modname, data) {
       val = val()
       data[name] = val
     }
-    if (val.compile) state.toCompile.push(val)
+    state.toCompile.push(val)
     return val
   }
 }
@@ -93,29 +91,25 @@ var auroConsts = {
     "\n  }" +
     "\n}",
   fs: "Auro.require('fs')",
-  record: "function ()"
 }
 
-function useConsts (consts) {
-  if (!consts) return
-  consts.forEach(function (name) {
-    var val = auroConsts[name]
-    if (typeof val == "string") {
-      val = {
-        name: name,
-        code: val,
-        compile: function (w) {
-          w.write("Auro." + this.name + " = " + this.code + ";")
-        }
-      }
-      auroConsts[name] = val
-      state.toCompile.push(val)
+for (var name in auroConsts) {
+  auroConsts[name] = {
+    name: name,
+    code: auroConsts[name],
+    compile: function (w) {
+      w.write("Auro." + this.name + " = " + this.code + ";")
     }
+  }
+}
+
+function getConsts (consts) {
+  if (consts) return consts.map(function (name) {
+    return auroConsts[name]
   })
 }
 
-function auroFn (name, ins, outc, code, consts) {
-  useConsts(consts)
+function auroFn (name, ins, outc, code, deps) {
   var fn = {
     type: "function",
     code: code,
@@ -131,13 +125,13 @@ function auroFn (name, ins, outc, code, consts) {
       writer.append(code)
       writer.dedent()
       writer.write("}")
-    }
+    },
+    dependencies: getConsts(deps),
   }
   return fn
 }
 
-function macro (str, inc, outc, consts) {
-  useConsts(consts)
+function macro (str, inc, outc, deps) {
   var m = {
     type: "macro", macro: str,
     ins: new Array(inc), outs: new Array(outc),
@@ -149,6 +143,7 @@ function macro (str, inc, outc, consts) {
       }
       return expr;
     },
+    dependencies: getConsts(deps),
   }
   var args = alphaslice(inc)
   m.name = "(function (" + args.join(",") + ") {return " + m.use(args) + "})"
@@ -156,9 +151,6 @@ function macro (str, inc, outc, consts) {
 }
 
 macro.id = macro("#1", 1, 1)
-
-var recordcache = {}
-var arraylistcache = {}
 
 var macro_modules = {
   "auro\x1fbool": new BaseModule("auro.bool", {
@@ -393,6 +385,7 @@ var macro_modules = {
       var count = id.split(",").length
       var tname = state.findName("record_" + type_id)
       var tp = wrapperType(tname)
+      state.toCompile.push(tp)
 
       var fields = []
       for (var i = 0; i < count; i++) {

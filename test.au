@@ -1,26 +1,7 @@
-module strmod = import auro.string;
-module bufmod = import auro.buffer;
-type buffer = bufmod.buffer;
 
-buffer stob (string) = strmod.tobuffer;
-string btos (buffer) = strmod.`new`;
-
-int bufsize (buffer) = bufmod.size;
-int bufget (buffer, int) = bufmod.get;
+module sys = import auro.system;
+int argc () = sys.argc;
 
 void main () {
-  string msg = "éter: 氣";
-  println(msg);
-
-  buffer b = stob(msg);
-
-  string bs = "( ";
-  var i = 0;
-  while (i < bufsize(b)) {
-    bs = bs + itos(bufget(b, i)) + " ";
-    i = i+1;
-  }
-  println(bs + ")");
-
-  println(btos(b));
+    println("hello world " + itos(argc()));
 }

@@ -35,7 +35,17 @@ reservedNames.forEach(function (name) { nameSet[name] = true })
 
 var toCompile = []
 var push = toCompile.push.bind(toCompile)
-toCompile.push = function (val) { if (this.indexOf(val) < 0) push(val) }
+toCompile.push = function (val) {
+  var deps = val.dependencies
+  if (deps) {
+    deps.forEach(function (dep) {
+      toCompile.push(dep)
+    })
+  }
+  if (this.indexOf(val) < 0) {
+    push(val)
+  }
+}
 
 exports.modules = {}
 exports.nameSet = nameSet

@@ -59,10 +59,15 @@ window.addEventListener("load", function () {
       var xhr = new XMLHttpRequest();
       window.myxhr = xhr
 
-      xhr.addEventListener("load", function (e) {
-        Auro.modules[mod_name] = new Uint8Array(xhr.response)
-        if (--toload == 0) loadEnd()
-      })
+      // Close over the loop variables (Fuck Javascript)
+      var callback = (function (xhr, mod_name) {
+        return function (e) {
+          Auro.modules[mod_name] = new Uint8Array(xhr.response)
+          if (--toload == 0) loadEnd()
+        }
+      })(xhr, mod_name)
+
+      xhr.addEventListener("load", callback)
 
       xhr.responseType = "arraybuffer"
       xhr.open("GET", script.src)
