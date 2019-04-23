@@ -1,6 +1,6 @@
 # Auro Web
 
-An implementation of [Auro](https://github.com/Arnaz87/aurovm) that comilpes module files to javascript.
+An implementation of [Auro](https://gitlab.com/aurovm/spec) that comilpes module files to javascript.
 
 Published under the [MIT](https://mit-license.org/) license.
 
