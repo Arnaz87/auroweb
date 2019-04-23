@@ -73,16 +73,6 @@ function escape (_str) {
 
 var findName = state.findName
 
-function tryPush (item, itemtype) {
-  var index = state.toCompile.indexOf(item)
-  if (index < 0) {
-    if (!item.name)
-      item.name = findName((itemtype || "item") + state.toCompile.length)
-    state.toCompile.push(item)
-  }
-  return item
-}
-
 var fnCount = 0, tpCount = 0, modCount = 0, cnsCount = 0
 
 function getModule (data, moduleName) {
@@ -160,6 +150,7 @@ function getModule (data, moduleName) {
             else if (item.type == "module")
               item.value = get_module(item.index)
           }
+          state.toCompile.push(item.value)
           return item.value
         },
         get_items: function () {
@@ -199,7 +190,6 @@ function getModule (data, moduleName) {
       var mod = get_module(fn.module)
       f = mod.get(fn.name)
       if (!f) console.log(mod)
-      tryPush(f)
     } else if (fn.type == "code") {
       f = new Code(fn, get_function);
       if (sourcemap[n] && sourcemap[n].name) {
@@ -268,22 +258,23 @@ function getModule (data, moduleName) {
           f = macro(expr, 0, 1);
         } else {
           var name = "cns" + ++cnsCount;
-          state.toCompile.push({
+
+          f = {
+            ins: [], outs: [-1],
+            use: function () {return name},
             compile: function (writer) {
               writer.write("var " + name + " = " + expr)
-            }
-          });
-          f = {ins: [], outs: [-1], use: function () {return name}};
+            },
+            dependencies: [cfn]
+          };
         }
       }
     } else {
       throw new Error("Unsupported function kind " + fn.type);
     }
     funcache[n] = f;
-    if (f instanceof Code) {
-      f.build()
-      state.toCompile.push(f)
-    }
+    if (f instanceof Code) f.build()
+    state.toCompile.push(f)
     return f;
   }
 
@@ -295,7 +286,6 @@ function getModule (data, moduleName) {
     var t = mod.get(tp.name)
     tpcache[n] = t
     if (!t.name) t.name = "tp" + ++tpCount
-    tryPush(t, "type")
     return t
   }
 

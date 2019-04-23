@@ -36,15 +36,16 @@ reservedNames.forEach(function (name) { nameSet[name] = true })
 var toCompile = []
 var push = toCompile.push.bind(toCompile)
 toCompile.push = function (val) {
+  if (val.compiled) return
+  val.compiled = true
+
   var deps = val.dependencies
   if (deps) {
     deps.forEach(function (dep) {
       toCompile.push(dep)
     })
   }
-  if (this.indexOf(val) < 0) {
-    push(val)
-  }
+  if (this.indexOf(val) < 0) push(val)
 }
 
 exports.modules = {}
@@ -69,5 +70,6 @@ exports.findName = function (orig, modname) {
 }
 
 exports.reset = function () {
+  toCompile.forEach(function (it) {it.compiled = false})
   toCompile.length = 0
 }

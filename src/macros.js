@@ -39,10 +39,16 @@ function wrapperType (name) {
     id: type_id++,
     wrap: macro("new " + name + "(#1)", 1, 1),
     unwrap: macro("#1.val", 1, 1),
+    test: macro("(#1 instanceof " + name + ")"),
     compile: function (w) {
-      w.write("var " + name + " = function (val) { this.val = val; }")
+      w.write("var " + this.name + " = function (val) { this.val = val; }")
     }
   }
+
+  tp.wrap.dependencies = [tp]
+  tp.unwrap.dependencies = [tp]
+  tp.test.dependencies = [tp]
+
   return tp
 }
 
@@ -348,8 +354,9 @@ var macro_modules = {
       if (!base) return this.base_mod;
       var id = base.id;
       return { "get": function (name) {
+        state.toCompile.push(base)
         if (name == "new") return base.wrap || macro.id
-        if (name == "get") return base.unwrap  || macro.id
+        if (name == "get") return base.unwrap || macro.id
         if (name == "test") return base.test || macro("(#1 instanceof " + base.name + ")", 1, 1)
       } };
     },
@@ -385,7 +392,6 @@ var macro_modules = {
       var count = id.split(",").length
       var tname = state.findName("record_" + type_id)
       var tp = wrapperType(tname)
-      state.toCompile.push(tp)
 
       var fields = []
       for (var i = 0; i < count; i++) {
@@ -395,7 +401,10 @@ var macro_modules = {
 
       return { get: function (name) {
         if (name == "new") return new_macro
-        if (name == "") return tp;
+        if (name == "") {
+          state.toCompile.push(tp)
+          return tp;
+        }
         
         var a = name.slice(0, 3);
         var n = name.slice(3);
@@ -466,7 +475,8 @@ var macro_modules = {
           return new BaseModule("function", {"": {
             ins: [],
             outs: [0],
-            use: function (fargs) { return fn.name }
+            use: function (fargs) { return fn.name },
+            dependencies: [fn],
           }})
         } },
         closure: {
@@ -485,7 +495,8 @@ var macro_modules = {
 
                 var def = "(function (" + inargs + ") { return " + fn.name + "(" + fnargs + ") })"
                 return def + ".bind(" + fargs[0] + ")"
-              }
+              },
+              dependencies: [fn]
             }});
           }
         }
@@ -519,10 +530,6 @@ var macro_modules = {
           w.dedent()
           w.write("}")
         }
-      }
-
-      function iterfn () {
-        
       }
 
       return new BaseModule("auro.utils.stringmap", {

@@ -476,6 +476,7 @@ function Code (fn, getfn) {
 
   this.ins = fn.ins;
   this.outs = fn.outs;
+  this.dependencies = [];
 }
 
 Code.prototype.build = function () {
@@ -538,6 +539,9 @@ Code.prototype.build = function () {
     if (k=="nif") stmt = new Branch(inst.a, Reg(inst.b), true);
     if (k=="call") {
       var ff = this._getfn(inst.index);
+      
+      this.dependencies.push(ff);
+
       var args = inst.args.map(function (x) {return Reg(x);});
       var outs = [];
       for (var j = 0; j < ff.outs.length; j++) {
