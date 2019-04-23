@@ -61,7 +61,6 @@ function BaseModule (modname, data) {
       val = val()
       data[name] = val
     }
-    state.toCompile.push(val)
     return val
   }
 }
@@ -354,7 +353,6 @@ var macro_modules = {
       if (!base) return this.base_mod;
       var id = base.id;
       return { "get": function (name) {
-        state.toCompile.push(base)
         if (name == "new") return base.wrap || macro.id
         if (name == "get") return base.unwrap || macro.id
         if (name == "test") return base.test || macro("(#1 instanceof " + base.name + ")", 1, 1)
@@ -401,10 +399,7 @@ var macro_modules = {
 
       return { get: function (name) {
         if (name == "new") return new_macro
-        if (name == "") {
-          state.toCompile.push(tp)
-          return tp;
-        }
+        if (name == "") return tp
         
         var a = name.slice(0, 3);
         var n = name.slice(3);

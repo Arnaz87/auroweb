@@ -150,7 +150,6 @@ function getModule (data, moduleName) {
             else if (item.type == "module")
               item.value = get_module(item.index)
           }
-          state.toCompile.push(item.value)
           return item.value
         },
         get_items: function () {
@@ -274,7 +273,6 @@ function getModule (data, moduleName) {
     }
     funcache[n] = f;
     if (f instanceof Code) f.build()
-    state.toCompile.push(f)
     return f;
   }
 
@@ -339,6 +337,16 @@ function compile_to_string (modname, format, libname) {
     if (!mod.get_items)
       throw new Error("Module " + modname + " has no accessible items")
     items = mod.get_items()
+
+    for (var k in items) {
+      state.toCompile.push(items[k])
+    }
+  }
+
+  function get_main () {
+    var main = mod.get("main")
+    state.toCompile.push(main)
+    return main
   }
 
   function write_items (fn) {
@@ -378,10 +386,10 @@ function compile_to_string (modname, format, libname) {
       break
     case 'browser':
     case 'node':
-      var main_fn = mod.get("main")
+      var main = get_main()
       write_auro()
       write_compiled()
-      writer.write(main_fn.use([]))
+      writer.write(main.use([]))
       break
   }
 
