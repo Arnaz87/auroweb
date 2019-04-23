@@ -109,8 +109,8 @@ for (var name in auroConsts) {
 }
 
 function getConsts (consts) {
-  if (consts) return consts.map(function (name) {
-    return auroConsts[name]
+  if (consts) return consts.map(function (it) {
+    return (typeof it == 'string') ? auroConsts[it] : it
   })
 }
 
@@ -355,7 +355,7 @@ var macro_modules = {
       return { "get": function (name) {
         if (name == "new") return base.wrap || macro.id
         if (name == "get") return base.unwrap || macro.id
-        if (name == "test") return base.test || macro("(#1 instanceof " + base.name + ")", 1, 1)
+        if (name == "test") return base.test || macro("(#1 instanceof " + base.name + ")", 1, 1, [base])
       } };
     },
     get: function (name) {
@@ -534,7 +534,7 @@ var macro_modules = {
         "get": macro("#1[#2]", 2, 1),
         "set": macro("#1[#2] = #3", 3, 0),
         "remove": macro("delete #1[#2]", 2, 0),
-        "new\x1diterator": macro("new " + itertp.name + "(#1)", 1, 1),
+        "new\x1diterator": macro("new " + itertp.name + "(#1)", 1, 1, [itertp]),
         "next\x1diterator": macro("#1.next()", 1, 1),
       })
     }
