@@ -1,7 +1,13 @@
 
-module sys = import auro.system;
-int argc () = sys.argc;
-
 void main () {
-    println("hello world " + itos(argc()));
+  if (true) {
+    println("True");
+    println("1");
+  } else if (false) {
+    println("Never");
+    println("2");
+  } else {
+    println("False");
+    println("3");
+  }
 }

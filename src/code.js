@@ -283,10 +283,11 @@ function removeGotos (stmts, fnName) {
     this.use = function () { return "if (" + this.cond.use() + ") continue " + this.target.name }
   }
 
-  function If (body, cond) {
+  function If (body, cond, els) {
     this.isIf = true
     this.body = body
     this.cond = Not(cond)
+    this.els = els
     body.container = this
     this.write = function (writer) {
       var cond = this.cond ? this.cond.use() : "true"
@@ -294,6 +295,12 @@ function removeGotos (stmts, fnName) {
       writer.indent();
       writeNodes(writer, this.body.stmts);
       writer.dedent();
+      if (this.els) {
+        writer.write("} else {");
+        writer.indent();
+        writeNodes(writer, this.els.stmts);
+        writer.dedent();
+      }
       writer.write("}");
     }
   }
@@ -377,51 +384,71 @@ function removeGotos (stmts, fnName) {
       block = stmt.block
     }
 
-    // Already direct, move inwards until siblings
-    while (block.level < label.block.level) {
-      var nextblock = label.block.lineage[block.level]
-      if (nextblock.offset < stmt.offset) {
-        throw new Exception("Goto Lifting not implemented")
-        break mainloop
-      } else {
-        var reg = getLabelReg(label.label)
-        var inner = block.slice(stmt.offset+1, nextblock.offset)
-        var body = new Block(inner, block)
-        var ifstmt = new If(body, reg)
-        block.replace(stmt.offset, nextblock.offset, ifstmt)
-        block.insert(stmt.offset, new Assign(reg, stmt.cond))
-        nextblock.container.cond = new Or(reg, nextblock.container.cond)
-        nextblock.insert(0, stmt)
-        stmt.cond = reg
-        block = stmt.block
-      }
-    }
-    
-    // Guaranteed to be siblings... I think
-    if (stmt.block.level == label.block.level) {
-      if (stmt.offset < label.offset) {
-        // The label must end up outside the if, because the gotos are
-        // processed bottom up and no inner structure will use the labels
-        // again
-        if (stmt.offset+1 == label.offset) {
-          block.replace(stmt.offset, label.offset+1, label)
+    // Else branch detection, not part of the original algorithm
+
+    var lblock = label.block
+
+    var isIf =
+      lblock.parent == block && // Target block is child of goto's block
+      lblock.container.isIf && // Target block is an if
+      stmt.offset < lblock.offset && // Target block is after the goto
+      label.offset == 0 && // Target is first statement of it's block
+      lblock.container.cond == False // Target block's condition is always false
+
+    if (isIf) {
+      var inner = block.slice(stmt.offset+1, lblock.offset)
+      var body = new Block(inner, block)
+      var ifstmt = new If(body, stmt.cond, lblock)
+
+      block.replace(stmt.offset, lblock.offset, ifstmt)
+    } else {
+
+      // Already direct, move inwards until siblings
+      while (block.level < label.block.level) {
+        var nextblock = label.block.lineage[block.level]
+        if (nextblock.offset < stmt.offset) {
+          throw new Exception("Goto Lifting not implemented")
+          break mainloop
         } else {
-          var inner = block.slice(stmt.offset+1, label.offset)
+          var reg = getLabelReg(label.label)
+          var inner = block.slice(stmt.offset+1, nextblock.offset)
           var body = new Block(inner, block)
-          var ifstmt = new If(body, stmt.cond)
-          block.replace(stmt.offset, label.offset, ifstmt)
+          var ifstmt = new If(body, reg)
+          block.replace(stmt.offset, nextblock.offset, ifstmt)
+          block.insert(stmt.offset, new Assign(reg, stmt.cond))
+          nextblock.container.cond = new Or(reg, nextblock.container.cond)
+          nextblock.insert(0, stmt)
+          stmt.cond = reg
+          block = stmt.block
         }
-      } else {
-        // The label must end up outside the loop, because any inner goto
-        // using it must necessarily be a continue statement
-        var inner = block.slice(label.offset+1, stmt.offset)
-        var body = new Block(inner, block)
-        var breakstmt = block.stmts[stmt.offset+1]
-        var breaklbl = breakstmt ? block.stmts[stmt.offset+1].label : null
-        var ifstmt = new Loop(body, stmt.cond, label.label, breaklbl)
-        block.replace(label.offset+1, stmt.offset+1, ifstmt)
       }
-    } else throw new Error("goto " + stmt.lbl + " not sibling of target label")
+      
+      // Guaranteed to be siblings... I think
+      if (stmt.block.level == label.block.level) {
+        if (stmt.offset < label.offset) {
+          // The label must end up outside the if, because the gotos are
+          // processed bottom up and no inner structure will use the labels
+          // again
+          if (stmt.offset+1 == label.offset) {
+            block.replace(stmt.offset, label.offset+1, label)
+          } else {
+            var inner = block.slice(stmt.offset+1, label.offset)
+            var body = new Block(inner, block)
+            var ifstmt = new If(body, stmt.cond)
+            block.replace(stmt.offset, label.offset, ifstmt)
+          }
+        } else {
+          // The label must end up outside the loop, because any inner goto
+          // using it must necessarily be a continue statement
+          var inner = block.slice(label.offset+1, stmt.offset)
+          var body = new Block(inner, block)
+          var breakstmt = block.stmts[stmt.offset+1]
+          var breaklbl = breakstmt ? block.stmts[stmt.offset+1].label : null
+          var ifstmt = new Loop(body, stmt.cond, label.label, breaklbl)
+          block.replace(label.offset+1, stmt.offset+1, ifstmt)
+        }
+      } else throw new Error("goto " + stmt.lbl + " not sibling of target label")
+    }
     
     var reg = usedLabels[label.label]
     if (reg) {
@@ -450,13 +477,19 @@ function cleanUp (old) {
     var stmt = old[i]
     if (stmt instanceof Label) continue
     if (stmt.isIf) {
-      if (stmt.cond == False) continue
       var body = cleanUp(stmt.body.stmts)
+      var els = stmt.els && cleanUp(stmt.els.stmts)
+
+      if (stmt.cond == False) {
+        if (stmt.els) stmts = stmts.join(body)
+        continue
+      }
       if (stmt.cond == True) {
         stmts = stmts.join(body)
         continue
       } else {
         stmt.body.stmts = body
+        if (els) stmt.els.stmts = els
       }
     } else if (stmt.isLoop) {
       var body = cleanUp(stmt.body.stmts)
