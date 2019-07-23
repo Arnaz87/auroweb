@@ -2,16 +2,23 @@
 const parse = require("./parse.js")
 const Writer = require("./writer.js")
 const Code = require("./code.js")
-const macros = require("./macros.js")
 const state = require("./state.js")
+
+const macros = require("./macros.js")
+const runtime_modules = require("./runtime_modules.js")
 
 const macro = macros.macro
 
 var modLoader = function () { return null }
 
-for (var name in macros.modules) {
-  state.modules[name] = macros.modules[name]
+function combine (self, other) {
+  for (var name in other) {
+    self[name] = other[name]
+  }
 }
+
+combine(state.modules, macros.modules)
+combine(state.modules, runtime_modules.modules)
 
 function load_module (name) {
   var mod = state.modules[name]
@@ -321,10 +328,14 @@ function getModule (data, moduleName) {
   return get_module(1)
 }
 
-function compile_to_string (modname, format, libname) {
+function compile_to_string (mod, format, libname) {
   var writer = new Writer()
+  var modname = null
  
-  var mod = load_module(modname)
+  if (typeof mod == "string") {
+    modname = mod
+    mod = load_module(modname)
+  }
 
   function write_compiled () {
     state.toCompile.forEach(function (item) {
@@ -335,7 +346,7 @@ function compile_to_string (modname, format, libname) {
   var items
   function get_items () {
     if (!mod.get_items)
-      throw new Error("Module " + modname + " has no accessible items")
+      throw new Error((modname ? "Module " + modname : "compiled module") + " has no accessible items")
     items = mod.get_items()
 
     for (var k in items) {
@@ -375,7 +386,7 @@ function compile_to_string (modname, format, libname) {
       write_auro()
       write_compiled()
 
-      writer.write("window[" + escape(libname || modname) + "] = {")
+      writer.write("window[" + escape(libname || modname || "auro_module") + "] = {")
       writer.indent()
       write_items(function (key, val) {
         return key + ": " + val + ","
@@ -391,6 +402,19 @@ function compile_to_string (modname, format, libname) {
       write_compiled()
       writer.write(main.use([]))
       break
+    case 'function':
+      get_items()
+
+      write_auro()
+      write_compiled()
+
+      writer.write("return {")
+      writer.indent()
+      write_items(function (key, val) {
+        return key + ": " + val + ","
+      })
+      writer.dedent()
+      writer.write("};")
   }
 
   return writer.text

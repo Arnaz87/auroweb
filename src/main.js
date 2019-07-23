@@ -31,7 +31,7 @@ compiler.setModuleLoader(function load_module (name) {
     }
   }
 
-  throw new Error("module " + name + " not found")
+  throw new Error("module " + name.replace(/\x1f/g, '.') + " not found")
 })
 
 const argv = process.argv;

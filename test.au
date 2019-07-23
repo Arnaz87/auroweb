@@ -1,13 +1,78 @@
+module module_mod = import auro.`module`;
+module item_mod = import auro.`module`.item;
+module code_mod = import auro.`module`.code;
+module type_mod = import auro.`type`;
+
+type mod_type = module_mod.``;
+type item = item_mod.``;
+type _type = type_mod.``;
+
+item null_item () = item_mod.`null`;
+item type_item (_type) = item_mod.`type`;
+
+module string_type_mod = (type_mod.`new`)({ `` = string; });
+_type get_string_type () = string_type_mod.``;
+
+module fn_mod = (import auro.function)({ in0 = string; });
+type fn = fn_mod.``;
+
+module print_fn_mod = (fn_mod.`new`)({ `0` = println; });
+fn get_print_fn () = print_fn_mod.``;
+
+module fn_item_mod = (item_mod.function)({ in0 = string; });
+item fn_item_new (fn) = fn_item_mod.``;
+
+type code = code_mod.``;
+code new_code () = code_mod.`new`;
+void add_input (code, item) = code_mod.`addinput`;
+void add_int (code, int) = code_mod.`addint`;
+void add_fn (code, item) = code_mod.`addfn`;
+
+item code_item (code) = item_mod.code;
+
+
+// builder returns the context of the module given an argument module.
+// return false as we don't need context for this example
+bool build (mod_type argument) { return false; }
+
+item get (bool ctx, string name) {
+  if (name == "print") {
+    code c = new_code();
+    add_input(c, type_item(get_string_type()));
+
+    fn print = get_print_fn();
+    item p_item = fn_item_new(print);
+
+    // print(reg_0)
+    // reg_0: first argument
+    add_fn(c, p_item);
+    add_int(c, 0);
+
+    // end instruction, no result values
+    add_int(c, 0);
+
+    return code_item(c);
+  } else {
+    return null_item();
+  }
+}
+
+module new_mod = module_mod.`new`;
+module b_arg {
+  ctx = bool;
+  build = build;
+  get = get;
+}
+
+module B = new_mod(b_arg);
+
+
+// Running
+
+//type bstr = B.string;
+//bstr getmsg () = B.getmsg;
+void b_print (string) = B.print;
 
 void main () {
-  if (true) {
-    println("True");
-    println("1");
-  } else if (false) {
-    println("Never");
-    println("2");
-  } else {
-    println("False");
-    println("3");
-  }
+  b_print("foo");
 }

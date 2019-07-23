@@ -23,7 +23,7 @@ function alphaslice (n) {
 
 function nativeType (name, is_class) {
   var tp = {
-    name: name,
+    name: '"' + name + '"',
     id: type_id++,
     test: is_class ? null :
       macro("(typeof #1 === '" + name + "')", 1, 1)
@@ -470,6 +470,7 @@ var macro_modules = {
           return new BaseModule("function", {"": {
             ins: [],
             outs: [0],
+            raw_fn: fn,
             use: function (fargs) { return fn.name },
             dependencies: [fn],
           }})
@@ -482,6 +483,7 @@ var macro_modules = {
             return new BaseModule("closure", {"new": {
               ins: inlist.slice(0, -1),
               outs: [0],
+              raw_fn: fn,
               use: function (fargs) {
                 var args = alphaslice(inlist.length)
                 var inargs = args.join(",")
@@ -560,3 +562,7 @@ var macro_modules = {
 
 exports.macro = macro
 exports.modules = macro_modules
+
+exports.wrapperType = wrapperType
+exports.BaseModule = BaseModule
+exports.auroFn = auroFn
