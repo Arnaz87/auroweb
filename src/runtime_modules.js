@@ -1,5 +1,6 @@
 
-var macros = require("./macros.js")
+var state = require("./state")
+var macros = require("./macros")
 
 var wrapperType = macros.wrapperType
 var BaseModule = macros.BaseModule
@@ -67,16 +68,7 @@ function compile_code (item) {
 
   console.log(fn)
   var code = new Code(fn, function (item) {
-    var name = get_runtime_fn_name()
-    return {
-      name: name,
-      ins: item.ins,
-      outs: item.outs,
-      use: function (args) { return this.name + "(" + args.join(", ") + ")" },
-      compile: function (w) {
-        w.write("var " + name + " = " + item.val.toString() + ";")
-      },
-    }
+    return state.all_items[item.val.name]
   })
   code.name = get_runtime_fn_name()
   return code
@@ -87,6 +79,7 @@ function create_module (arg_module) {
   var state = require("./state")
 
   var js = compiler.compile_to_string(arg_module, "function")
+  console.log(js)
   state.reset()
 
   var arg_fn = new Function(js)

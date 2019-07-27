@@ -137,7 +137,7 @@ function auroFn (name, ins, outc, code, deps) {
 }
 
 function macro (str, inc, outc, deps) {
-  var m = {
+  return {
     type: "macro", macro: str,
     ins: new Array(inc), outs: new Array(outc),
     use: function (args) {
@@ -148,11 +148,15 @@ function macro (str, inc, outc, deps) {
       }
       return expr;
     },
+    makeGlobal: function () {
+      this.name = state.findName("fn")
+      this.compile = function (w) {
+        var args = alphaslice(this.ins.length)
+        w.write("function " + this.name + " (" + args.join(",") + ") {return " + this.use(args) + "}")
+      }
+    },
     dependencies: getConsts(deps),
   }
-  var args = alphaslice(inc)
-  m.name = "(function (" + args.join(",") + ") {return " + m.use(args) + "})"
-  return m
 }
 
 macro.id = macro("#1", 1, 1)
@@ -466,6 +470,7 @@ var macro_modules = {
         },
         "new": { build: function (args) {
           var fn = args.get("0")
+          fn.makeGlobal()
 
           return new BaseModule("function", {"": {
             ins: [],
@@ -478,6 +483,7 @@ var macro_modules = {
         closure: {
           name: "Auro.Closure",
           build: function (args) {
+            // TODO: Estas funciones no funcionan cuando se usan en módulos generados en código (runtime)
             var fn = args.get("0")
 
             return new BaseModule("closure", {"new": {

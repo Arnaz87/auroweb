@@ -45,12 +45,16 @@ toCompile.push = function (val) {
       toCompile.push(dep)
     })
   }
-  if (this.indexOf(val) < 0) push(val)
+  if (this.indexOf(val) < 0) {
+    push(val)
+    exports.all_items[val.name] = val
+  }
 }
 
 exports.modules = {}
 exports.nameSet = nameSet
 exports.toCompile = toCompile
+exports.all_items = {}
 
 exports.findName = function (orig, modname) {
   function normalize (name) {
