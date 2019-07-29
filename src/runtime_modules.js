@@ -8,14 +8,11 @@ var auroFn = macros.auroFn
 var macro = macros.macro
 
 var global_items = []
+global_items.by_name = state.all_items
+
 function add_item (item) {
   global_items.push(item)
   return global_items.length-1
-}
-
-var runtime_fn_count = 0
-function get_runtime_fn_name () {
-  return "$runtime_fn_" + runtime_fn_count++
 }
 
 function compile_code (item) {
@@ -61,16 +58,15 @@ function compile_code (item) {
       push({
         type: "call",
         index: k,
-        args: read_n(k.ins),
+        args: read_n(k.ins.length),
       })
     }
   }
 
-  console.log(fn)
   var code = new Code(fn, function (item) {
-    return state.all_items[item.val.name]
+    return item
   })
-  code.name = get_runtime_fn_name()
+  code.name = state.findName("fn")
   return code
 }
 
@@ -79,17 +75,25 @@ function create_module (arg_module) {
   var state = require("./state")
 
   var js = compiler.compile_to_string(arg_module, "function")
-  console.log(js)
   state.reset()
 
+  // TODO: Hacky
+  js = "var global_items = arguments[0];\n" + js
+  console.log(js)
   var arg_fn = new Function(js)
-  var arg_result = arg_fn()
+  var arg_result = arg_fn(global_items)
 
   function build (arg) {
     return {
       ctx: arg_result.build(arg),
       "get": function (name) {
-        return arg_result.get(this.ctx, name)
+        var item = arg_result.get(this.ctx, name)
+
+        if (item.is_runtime_code) {
+          return compile_code(item)
+        } else {
+          return item
+        }
       }
     }
   }
@@ -102,35 +106,33 @@ function create_module (arg_module) {
       if (!default_mod) {
         default_mod = build({ "get": function () {} })
       }
-      var item = default_mod.get(name)
-      if (!item) {
-        throw new Error("Item " + name + " not found in created module")
-      }
-
-      switch (item.type) {
-        case "type":
-          return global_items[item.val]
-        case "function":
-          console.log(item.val)
-          throw new Error("function item")
-        case "code":
-          return compile_code(item.val)
-        default:
-          throw new Error("Cannot give a " + item.type + " item")
-      }
+      return default_mod.get(name)
     },
   }
 }
 
+
+// TODO: global_items could be shadowed by code variables
 var modules = exports.modules = {
   "auro\x1fmodule": new BaseModule("auro.module", {
+    "": wrapperType("Module"),
+    "get": macro("#1.get(#2)", 2, 1),
+    "build": macro("#1.build(#2)", 2, 1),
     "new": {
+      build: function (argmod) {
+        item_id = add_item(argmod)
+        return new BaseModule("module.new", {
+          "": macro("global_items[" + item_id + "]", 0, 1)
+        })
+      }
+    },
+    "create": {
       build: create_module
     }
   }),
   "auro\x1fmodule\x1fcode": new BaseModule("auro.module.code", {
     "": wrapperType("Code"),
-    "new": macro("{ins: [], outs: [], code: []}"),
+    "new": macro("{ins: [], outs: [], code: [], is_runtime_code: true}"),
     "addinput": macro("#1.ins.push(#2)", 2, 0),
     "addoutput": macro("#1.outs.push(#2)", 2, 0),
     "addint": macro("#1.code.push(#2)", 2, 0),
@@ -150,11 +152,11 @@ var modules = exports.modules = {
   }),
   "auro\x1fmodule\x1fitem": new BaseModule("auro.item", {
     "": wrapperType("Item"),
-    "null": macro("{type:'null'}", 0, 1),
-    "type": macro("{type:'type',val:#1}", 1, 1),
-    "code": macro("{type:'code',val:#1}", 1, 1),
-    "module": macro("{type:'module',val:#1}", 1, 1),
-    "isnull": macro("(#1.type == 'null')", 1, 1),
+    "null": macro("null", 0, 1),
+    "type": macro.id,
+    "code": macro.id,
+    "module": macro.id,
+    "isnull": macro("(#1 == null)", 1, 1),
     "function": {
       build: function (arg) {
         var ins = 0
@@ -177,7 +179,7 @@ var modules = exports.modules = {
           }
         }
         return new BaseModule("item.function", {
-          "": macro("{type:'function',val:#1,ins:"+ins+",outs:"+outs+"}", 1, 1)
+          "": macro("global_items.by_name[#1.name]", 1, 1)
         })
       }
     }
